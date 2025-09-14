@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="kasuwa.client/kasuwa.client.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+  <Project Path="Kasuwa.Server/Kasuwa.Server.csproj" />
+</Solution>

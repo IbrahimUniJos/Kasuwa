@@ -1,0 +1,121 @@
+# Kasuwa Marketplace - Identity API Tests
+# Use this file to test the authentication endpoints
+
+### Register Customer
+POST https://localhost:7290/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "customer@example.com",
+  "password": "Customer123!",
+  "confirmPassword": "Customer123!",
+  "firstName": "John",
+  "lastName": "Doe",
+  "userType": 1
+}
+
+### Register Vendor
+POST https://localhost:7290/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "vendor@example.com",
+  "password": "Vendor123!",
+  "confirmPassword": "Vendor123!",
+  "firstName": "Jane",
+  "lastName": "Smith",
+  "userType": 2,
+  "businessName": "Smith's Electronics",
+  "businessDescription": "Electronics and gadgets store",
+  "businessAddress": "123 Business Street, City, State",
+  "businessPhone": "+1234567890"
+}
+
+### Register Admin
+POST https://localhost:7290/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "Admin123!",
+  "confirmPassword": "Admin123!",
+  "firstName": "Admin",
+  "lastName": "User",
+  "userType": 3
+}
+
+### Login
+POST https://localhost:7290/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "customer@example.com",
+  "password": "Customer123!",
+  "rememberMe": false
+}
+
+### Get Profile (requires Authorization header)
+GET https://localhost:7290/api/auth/profile
+Authorization: Bearer {{token}}
+
+### Change Password (requires Authorization header)
+POST https://localhost:7290/api/auth/change-password
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "currentPassword": "Customer123!",
+  "newPassword": "NewPassword123!",
+  "confirmPassword": "NewPassword123!"
+}
+
+### Refresh Token
+POST https://localhost:7290/api/auth/refresh
+Content-Type: application/json
+
+{
+  "accessToken": "{{expired_token}}",
+  "refreshToken": "{{refresh_token}}"
+}
+
+### Logout (requires Authorization header)
+POST https://localhost:7290/api/auth/logout
+Authorization: Bearer {{token}}
+
+### Admin: Get All Users (requires Admin role)
+GET https://localhost:7290/api/admin/users?page=1&pageSize=10
+Authorization: Bearer {{admin_token}}
+
+### Admin: Get User by ID (requires Admin role)
+GET https://localhost:7290/api/admin/users/{{user_id}}
+Authorization: Bearer {{admin_token}}
+
+### Admin: Approve Vendor (requires Admin role)
+POST https://localhost:7290/api/admin/users/{{vendor_id}}/approve-vendor
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "isApproved": true
+}
+
+### Admin: Toggle User Status (requires Admin role)
+POST https://localhost:7290/api/admin/users/{{user_id}}/toggle-status
+Authorization: Bearer {{admin_token}}
+
+### Admin: Assign Role (requires Admin role)
+POST https://localhost:7290/api/admin/users/{{user_id}}/roles
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "roleName": "Vendor"
+}
+
+### Admin: Remove Role (requires Admin role)
+DELETE https://localhost:7290/api/admin/users/{{user_id}}/roles/Customer
+Authorization: Bearer {{admin_token}}
+
+### Admin: Get All Roles (requires Admin role)
+GET https://localhost:7290/api/admin/roles
+Authorization: Bearer {{admin_token}}

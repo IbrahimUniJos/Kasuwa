@@ -1,0 +1,6 @@
+@Kasuwa.Server_HostAddress = http://localhost:5201
+
+GET {{Kasuwa.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
