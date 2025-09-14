@@ -12,7 +12,7 @@ namespace Kasuwa.Server
 {
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             var builder = WebApplication.CreateBuilder(args);
 
@@ -125,7 +125,85 @@ namespace Kasuwa.Server
 
             app.MapFallbackToFile("/index.html");
 
+            // Seed database with default roles and admin user
+            await SeedDatabaseAsync(app.Services);
+
             app.Run();
+        }
+
+        /// <summary>
+        /// Seeds the database with default roles and admin user
+        /// </summary>
+        public static async Task SeedDatabaseAsync(IServiceProvider services)
+        {
+            using var scope = services.CreateScope();
+            var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+            try
+            {
+                // Create default roles
+                string[] roles = { "Customer", "Vendor", "Administrator" };
+                
+                foreach (var role in roles)
+                {
+                    if (!await roleManager.RoleExistsAsync(role))
+                    {
+                        var identityRole = new IdentityRole(role);
+                        var result = await roleManager.CreateAsync(identityRole);
+                        if (result.Succeeded)
+                        {
+                            logger.LogInformation("Role {RoleName} created successfully", role);
+                        }
+                        else
+                        {
+                            logger.LogError("Failed to create role {RoleName}: {Errors}", role, string.Join(", ", result.Errors.Select(e => e.Description)));
+                        }
+                    }
+                    else
+                    {
+                        logger.LogInformation("Role {RoleName} already exists", role);
+                    }
+                }
+
+                // Create default admin user if not exists
+                var adminEmail = "admin@kasuwa.com";
+                var adminUser = await userManager.FindByEmailAsync(adminEmail);
+                
+                if (adminUser == null)
+                {
+                    adminUser = new ApplicationUser
+                    {
+                        UserName = adminEmail,
+                        Email = adminEmail,
+                        FirstName = "System",
+                        LastName = "Administrator",
+                        UserType = UserType.Administrator,
+                        IsActive = true,
+                        EmailConfirmed = true
+                    };
+                    
+                    var result = await userManager.CreateAsync(adminUser, "Admin123!");
+                    if (result.Succeeded)
+                    {
+                        await userManager.AddToRoleAsync(adminUser, "Administrator");
+                        logger.LogInformation("Default admin user created successfully with email: {Email}", adminEmail);
+                    }
+                    else
+                    {
+                        logger.LogError("Failed to create admin user: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
+                    }
+                }
+                else
+                {
+                    logger.LogInformation("Admin user already exists with email: {Email}", adminEmail);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "An error occurred while seeding the database");
+            }
         }
     }
 }

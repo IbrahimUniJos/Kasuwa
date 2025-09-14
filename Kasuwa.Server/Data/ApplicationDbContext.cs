@@ -12,6 +12,7 @@ namespace Kasuwa.Server.Data
         }
         
         public DbSet<UserAddress> UserAddresses { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
         
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -45,6 +46,28 @@ namespace Kasuwa.Server.Data
                       
                 entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => e.IsDefault);
+            });
+            
+            // Configure RefreshToken
+            builder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasOne(e => e.User)
+                      .WithMany()
+                      .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.Property(e => e.Token).HasMaxLength(500).IsRequired();
+                entity.Property(e => e.UserId).IsRequired();
+                entity.Property(e => e.ExpiryDate).IsRequired();
+                entity.Property(e => e.CreatedDate).IsRequired();
+                entity.Property(e => e.ReplacedByToken).HasMaxLength(500);
+                entity.Property(e => e.ReasonRevoked).HasMaxLength(200);
+                
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Token).IsUnique();
+                entity.HasIndex(e => e.ExpiryDate);
+                entity.HasIndex(e => e.IsRevoked);
             });
             
             // Seed roles

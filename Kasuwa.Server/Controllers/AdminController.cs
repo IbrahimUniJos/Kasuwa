@@ -45,7 +45,6 @@ namespace Kasuwa.Server.Controllers
             {
                 var query = _context.Users.AsQueryable();
 
-                // Apply filters
                 if (!string.IsNullOrEmpty(search))
                 {
                     query = query.Where(u => u.Email!.Contains(search) || 
@@ -231,115 +230,46 @@ namespace Kasuwa.Server.Controllers
         }
 
         /// <summary>
-        /// Assign role to user
+        /// Get admin dashboard statistics
         /// </summary>
-        [HttpPost("users/{id}/roles")]
-        public async Task<ActionResult<AuthResponseDto>> AssignRole(string id, [FromBody] AssignRoleRequestDto request)
+        [HttpGet("dashboard-stats")]
+        public async Task<ActionResult<AdminDashboardStatsDto>> GetDashboardStats()
         {
             try
             {
-                var user = await _userManager.FindByIdAsync(id);
-                if (user == null)
-                {
-                    return NotFound("User not found");
-                }
+                var totalUsers = await _context.Users.CountAsync();
+                var totalCustomers = await _context.Users.CountAsync(u => u.UserType == UserType.Customer);
+                var totalVendors = await _context.Users.CountAsync(u => u.UserType == UserType.Vendor);
+                var approvedVendors = await _context.Users.CountAsync(u => u.UserType == UserType.Vendor && u.IsVendorApproved);
+                var pendingVendorApplications = await _context.Users.CountAsync(u => u.UserType == UserType.Vendor && !u.IsVendorApproved);
+                var activeUsers = await _context.Users.CountAsync(u => u.IsActive);
+                var inactiveUsers = await _context.Users.CountAsync(u => !u.IsActive);
+                
+                var firstDayOfMonth = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                var newUsersThisMonth = await _context.Users.CountAsync(u => u.DateCreated >= firstDayOfMonth);
 
-                var roleExists = await _roleManager.RoleExistsAsync(request.RoleName);
-                if (!roleExists)
+                var stats = new AdminDashboardStatsDto
                 {
-                    return BadRequest("Role does not exist");
-                }
+                    TotalUsers = totalUsers,
+                    TotalCustomers = totalCustomers,
+                    TotalVendors = totalVendors,
+                    ApprovedVendors = approvedVendors,
+                    PendingVendorApplications = pendingVendorApplications,
+                    ActiveUsers = activeUsers,
+                    InactiveUsers = inactiveUsers,
+                    NewUsersThisMonth = newUsersThisMonth,
+                    TotalPlatformRevenue = 0.00m,
+                    MonthlyPlatformRevenue = 0.00m,
+                    TotalOrders = 0,
+                    TotalProducts = 0
+                };
 
-                var isInRole = await _userManager.IsInRoleAsync(user, request.RoleName);
-                if (isInRole)
-                {
-                    return BadRequest("User is already in this role");
-                }
-
-                var result = await _userManager.AddToRoleAsync(user, request.RoleName);
-                if (!result.Succeeded)
-                {
-                    return BadRequest("Failed to assign role");
-                }
-
-                _logger.LogInformation("Role {RoleName} assigned to user {UserId}", request.RoleName, id);
-
-                return Ok(new AuthResponseDto
-                {
-                    Success = true,
-                    Message = $"Role '{request.RoleName}' assigned successfully"
-                });
+                return Ok(stats);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error assigning role");
-                return StatusCode(500, "An error occurred while assigning role");
-            }
-        }
-
-        /// <summary>
-        /// Remove role from user
-        /// </summary>
-        [HttpDelete("users/{id}/roles/{roleName}")]
-        public async Task<ActionResult<AuthResponseDto>> RemoveRole(string id, string roleName)
-        {
-            try
-            {
-                var user = await _userManager.FindByIdAsync(id);
-                if (user == null)
-                {
-                    return NotFound("User not found");
-                }
-
-                var isInRole = await _userManager.IsInRoleAsync(user, roleName);
-                if (!isInRole)
-                {
-                    return BadRequest("User is not in this role");
-                }
-
-                var result = await _userManager.RemoveFromRoleAsync(user, roleName);
-                if (!result.Succeeded)
-                {
-                    return BadRequest("Failed to remove role");
-                }
-
-                _logger.LogInformation("Role {RoleName} removed from user {UserId}", roleName, id);
-
-                return Ok(new AuthResponseDto
-                {
-                    Success = true,
-                    Message = $"Role '{roleName}' removed successfully"
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error removing role");
-                return StatusCode(500, "An error occurred while removing role");
-            }
-        }
-
-        /// <summary>
-        /// Get all roles
-        /// </summary>
-        [HttpGet("roles")]
-        public async Task<ActionResult<List<RoleDto>>> GetRoles()
-        {
-            try
-            {
-                var roles = await _roleManager.Roles
-                    .Select(r => new RoleDto
-                    {
-                        Id = r.Id,
-                        Name = r.Name!
-                    })
-                    .ToListAsync();
-
-                return Ok(roles);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting roles");
-                return StatusCode(500, "An error occurred while getting roles");
+                _logger.LogError(ex, "Error getting admin dashboard statistics");
+                return StatusCode(500, "An error occurred while getting dashboard statistics");
             }
         }
     }
@@ -357,16 +287,5 @@ namespace Kasuwa.Server.Controllers
     public class ApproveVendorRequestDto
     {
         public bool IsApproved { get; set; }
-    }
-
-    public class AssignRoleRequestDto
-    {
-        public string RoleName { get; set; } = string.Empty;
-    }
-
-    public class RoleDto
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
     }
 }

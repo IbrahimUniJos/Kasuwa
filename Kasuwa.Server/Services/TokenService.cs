@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using Kasuwa.Server.Data;
 using Kasuwa.Server.Models;
 
 namespace Kasuwa.Server.Services
@@ -10,7 +13,11 @@ namespace Kasuwa.Server.Services
     public interface ITokenService
     {
         Task<string> GenerateJwtTokenAsync(ApplicationUser user);
-        Task<string> GenerateRefreshTokenAsync();
+        Task<RefreshToken> GenerateRefreshTokenAsync(string userId);
+        Task<RefreshToken?> GetRefreshTokenAsync(string token);
+        Task<bool> ValidateRefreshTokenAsync(string token);
+        Task RevokeRefreshTokenAsync(string token, string? reason = null);
+        Task RevokeAllRefreshTokensAsync(string userId, string? reason = null);
         ClaimsPrincipal GetPrincipalFromExpiredToken(string token);
     }
     
@@ -18,11 +25,19 @@ namespace Kasuwa.Server.Services
     {
         private readonly IConfiguration _configuration;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ApplicationDbContext _context;
+        private readonly ILogger<TokenService> _logger;
         
-        public TokenService(IConfiguration configuration, UserManager<ApplicationUser> userManager)
+        public TokenService(
+            IConfiguration configuration, 
+            UserManager<ApplicationUser> userManager,
+            ApplicationDbContext context,
+            ILogger<TokenService> logger)
         {
             _configuration = configuration;
             _userManager = userManager;
+            _context = context;
+            _logger = logger;
         }
         
         public async Task<string> GenerateJwtTokenAsync(ApplicationUser user)
@@ -59,12 +74,71 @@ namespace Kasuwa.Server.Services
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
         
-        public Task<string> GenerateRefreshTokenAsync()
+        public async Task<RefreshToken> GenerateRefreshTokenAsync(string userId)
         {
             var randomNumber = new byte[32];
-            using var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
+            using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(randomNumber);
-            return Task.FromResult(Convert.ToBase64String(randomNumber));
+            var token = Convert.ToBase64String(randomNumber);
+            
+            var refreshTokenValidityInDays = int.Parse(_configuration["JWT:RefreshTokenValidityInDays"] ?? "7");
+            
+            var refreshToken = new RefreshToken
+            {
+                UserId = userId,
+                Token = token,
+                ExpiryDate = DateTime.UtcNow.AddDays(refreshTokenValidityInDays),
+                CreatedDate = DateTime.UtcNow
+            };
+            
+            _context.RefreshTokens.Add(refreshToken);
+            await _context.SaveChangesAsync();
+            
+            return refreshToken;
+        }
+        
+        public async Task<RefreshToken?> GetRefreshTokenAsync(string token)
+        {
+            return await _context.RefreshTokens
+                .Include(rt => rt.User)
+                .FirstOrDefaultAsync(rt => rt.Token == token);
+        }
+        
+        public async Task<bool> ValidateRefreshTokenAsync(string token)
+        {
+            var refreshToken = await GetRefreshTokenAsync(token);
+            return refreshToken != null && refreshToken.IsActive;
+        }
+        
+        public async Task RevokeRefreshTokenAsync(string token, string? reason = null)
+        {
+            var refreshToken = await GetRefreshTokenAsync(token);
+            if (refreshToken != null && refreshToken.IsActive)
+            {
+                refreshToken.IsRevoked = true;
+                refreshToken.RevokedDate = DateTime.UtcNow;
+                refreshToken.ReasonRevoked = reason ?? "Token revoked";
+                
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Refresh token revoked for user {UserId}: {Reason}", refreshToken.UserId, reason);
+            }
+        }
+        
+        public async Task RevokeAllRefreshTokensAsync(string userId, string? reason = null)
+        {
+            var activeTokens = await _context.RefreshTokens
+                .Where(rt => rt.UserId == userId && rt.IsActive)
+                .ToListAsync();
+                
+            foreach (var token in activeTokens)
+            {
+                token.IsRevoked = true;
+                token.RevokedDate = DateTime.UtcNow;
+                token.ReasonRevoked = reason ?? "All tokens revoked";
+            }
+            
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("All refresh tokens revoked for user {UserId}: {Count} tokens", userId, activeTokens.Count);
         }
         
         public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)

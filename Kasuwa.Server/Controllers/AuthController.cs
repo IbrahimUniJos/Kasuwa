@@ -99,7 +99,7 @@ namespace Kasuwa.Server.Controllers
 
                 // Generate JWT token
                 var token = await _tokenService.GenerateJwtTokenAsync(user);
-                var refreshToken = await _tokenService.GenerateRefreshTokenAsync();
+                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id);
 
                 var userDto = await CreateUserDto(user);
 
@@ -110,7 +110,7 @@ namespace Kasuwa.Server.Controllers
                     Success = true,
                     Message = "Registration successful",
                     Token = token,
-                    RefreshToken = refreshToken,
+                    RefreshToken = refreshToken.Token,
                     TokenExpiration = DateTime.UtcNow.AddHours(3),
                     User = userDto
                 });
@@ -179,7 +179,7 @@ namespace Kasuwa.Server.Controllers
 
                 // Generate tokens
                 var token = await _tokenService.GenerateJwtTokenAsync(user);
-                var refreshToken = await _tokenService.GenerateRefreshTokenAsync();
+                var refreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id);
 
                 var userDto = await CreateUserDto(user);
 
@@ -190,7 +190,7 @@ namespace Kasuwa.Server.Controllers
                     Success = true,
                     Message = "Login successful",
                     Token = token,
-                    RefreshToken = refreshToken,
+                    RefreshToken = refreshToken.Token,
                     TokenExpiration = DateTime.UtcNow.AddHours(3),
                     User = userDto
                 });
@@ -214,40 +214,51 @@ namespace Kasuwa.Server.Controllers
         {
             try
             {
-                var principal = _tokenService.GetPrincipalFromExpiredToken(request.AccessToken);
-                var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
-                if (string.IsNullOrEmpty(userId))
+                // Validate the refresh token
+                var isValidRefreshToken = await _tokenService.ValidateRefreshTokenAsync(request.RefreshToken);
+                if (!isValidRefreshToken)
                 {
                     return Unauthorized(new AuthResponseDto
                     {
                         Success = false,
-                        Message = "Invalid token"
+                        Message = "Invalid or expired refresh token"
                     });
                 }
 
-                var user = await _userManager.FindByIdAsync(userId);
-                if (user == null || !user.IsActive)
+                // Get the refresh token details
+                var refreshTokenEntity = await _tokenService.GetRefreshTokenAsync(request.RefreshToken);
+                if (refreshTokenEntity == null || refreshTokenEntity.User == null)
                 {
                     return Unauthorized(new AuthResponseDto
                     {
                         Success = false,
-                        Message = "Invalid token or user not found"
+                        Message = "Invalid refresh token"
                     });
                 }
 
-                // In a production environment, you should validate the refresh token
-                // against a stored value in the database
+                var user = refreshTokenEntity.User;
+                if (!user.IsActive)
+                {
+                    return Unauthorized(new AuthResponseDto
+                    {
+                        Success = false,
+                        Message = "User account is deactivated"
+                    });
+                }
 
+                // Revoke the old refresh token
+                await _tokenService.RevokeRefreshTokenAsync(request.RefreshToken, "Replaced by new token");
+
+                // Generate new tokens
                 var newToken = await _tokenService.GenerateJwtTokenAsync(user);
-                var newRefreshToken = await _tokenService.GenerateRefreshTokenAsync();
+                var newRefreshToken = await _tokenService.GenerateRefreshTokenAsync(user.Id);
 
                 return Ok(new AuthResponseDto
                 {
                     Success = true,
                     Message = "Token refreshed successfully",
                     Token = newToken,
-                    RefreshToken = newRefreshToken,
+                    RefreshToken = newRefreshToken.Token,
                     TokenExpiration = DateTime.UtcNow.AddHours(3)
                 });
             }
@@ -271,11 +282,6 @@ namespace Kasuwa.Server.Controllers
         {
             try
             {
-                // In a more sophisticated implementation, you would:
-                // 1. Blacklist the current token
-                // 2. Remove refresh tokens from database
-                // 3. Clear any server-side sessions
-
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 _logger.LogInformation("User {UserId} logged out", userId);
 
@@ -288,6 +294,43 @@ namespace Kasuwa.Server.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during logout");
+                return StatusCode(500, new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "An error occurred during logout"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Logout from all devices (revoke all refresh tokens)
+        /// </summary>
+        [HttpPost("logout-all")]
+        [Authorize]
+        public async Task<ActionResult<AuthResponseDto>> LogoutAll()
+        {
+            try
+            {
+                var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized();
+                }
+
+                // Revoke all refresh tokens for the user
+                await _tokenService.RevokeAllRefreshTokensAsync(userId, "User requested logout from all devices");
+
+                _logger.LogInformation("User {UserId} logged out from all devices", userId);
+
+                return Ok(new AuthResponseDto
+                {
+                    Success = true,
+                    Message = "Logged out from all devices successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during logout all");
                 return StatusCode(500, new AuthResponseDto
                 {
                     Success = false,
@@ -373,6 +416,108 @@ namespace Kasuwa.Server.Controllers
                 {
                     Success = false,
                     Message = "An error occurred while changing password"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Request password reset token
+        /// </summary>
+        [HttpPost("forgot-password")]
+        public async Task<ActionResult<AuthResponseDto>> ForgotPassword([FromBody] ForgotPasswordRequestDto request)
+        {
+            try
+            {
+                var user = await _userManager.FindByEmailAsync(request.Email);
+                if (user == null || !user.IsActive)
+                {
+                    // Don't reveal that the user does not exist or is inactive
+                    // This prevents email enumeration attacks
+                    return Ok(new AuthResponseDto 
+                    { 
+                        Success = true, 
+                        Message = "Password reset link sent if email exists and account is active" 
+                    });
+                }
+
+                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                
+                // In production, you would send an email with the reset link
+                // For now, we'll log the token for testing purposes
+                _logger.LogInformation("Password reset token for {Email}: {Token}", request.Email, token);
+                
+                return Ok(new AuthResponseDto
+                {
+                    Success = true,
+                    Message = "Password reset link sent to your email if the account exists"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during password reset request");
+                return StatusCode(500, new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "An error occurred while processing password reset request"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Reset password using token
+        /// </summary>
+        [HttpPost("reset-password")]
+        public async Task<ActionResult<AuthResponseDto>> ResetPassword([FromBody] ResetPasswordRequestDto request)
+        {
+            try
+            {
+                var user = await _userManager.FindByEmailAsync(request.Email);
+                if (user == null)
+                {
+                    return BadRequest(new AuthResponseDto 
+                    { 
+                        Success = false, 
+                        Message = "Invalid reset request" 
+                    });
+                }
+
+                if (!user.IsActive)
+                {
+                    return BadRequest(new AuthResponseDto
+                    {
+                        Success = false,
+                        Message = "Account is deactivated. Please contact support."
+                    });
+                }
+
+                var result = await _userManager.ResetPasswordAsync(user, request.Token, request.Password);
+                if (!result.Succeeded)
+                {
+                    return BadRequest(new AuthResponseDto
+                    {
+                        Success = false,
+                        Message = string.Join(", ", result.Errors.Select(e => e.Description))
+                    });
+                }
+
+                // Update security stamp to invalidate existing tokens
+                await _userManager.UpdateSecurityStampAsync(user);
+
+                _logger.LogInformation("Password reset successfully for user {Email}", request.Email);
+
+                return Ok(new AuthResponseDto
+                {
+                    Success = true,
+                    Message = "Password reset successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during password reset");
+                return StatusCode(500, new AuthResponseDto
+                {
+                    Success = false,
+                    Message = "An error occurred while resetting password"
                 });
             }
         }
