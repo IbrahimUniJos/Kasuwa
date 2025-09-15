@@ -13,6 +13,7 @@ import CartDrawer from './components/ui/CartDrawer';
 import { HomePage } from './components';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
+import CategoriesPage from './pages/CategoriesPage';
 
 // Services and Types
 import { 
@@ -587,6 +588,7 @@ function AppContent() {
             <Route path="/" element={<HomePage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
           </Routes>
         </main>
 
