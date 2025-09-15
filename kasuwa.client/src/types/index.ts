@@ -40,26 +40,33 @@ export interface ProductCategory {
 
 export interface Product {
   id: number;
+  vendorId: string;
   name: string;
   description: string;
-  shortDescription?: string;
-  sku: string;
   price: number;
-  compareAtPrice?: number;
-  costPrice?: number;
-  trackQuantity: boolean;
-  quantity: number;
-  categoryId: number;
-  vendorId: string;
+  stockQuantity: number; // Maps to quantity in frontend
+  sku: string;
   isActive: boolean;
-  isFeatured: boolean;
-  weight?: number;
-  dimensions?: string;
-  tags?: string;
-  seoTitle?: string;
-  seoDescription?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdDate: Date; // Maps to createdAt
+  updatedDate: Date; // Maps to updatedAt
+  categoryId: number;
+  comparePrice?: number; // Maps to compareAtPrice
+  weight: number;
+  weightUnit?: string;
+  requiresShipping: boolean;
+  trackQuantity: boolean;
+  continueSellingWhenOutOfStock: boolean;
+  metaTitle?: string; // Maps to seoTitle
+  metaDescription?: string; // Maps to seoDescription
+  // Frontend-specific computed fields
+  quantity: number; // Computed from stockQuantity
+  compareAtPrice?: number; // Maps to comparePrice
+  isFeatured: boolean; // Not in C# model, frontend only
+  createdAt: Date; // Maps to createdDate
+  updatedAt: Date; // Maps to updatedDate
+  seoTitle?: string; // Maps to metaTitle
+  seoDescription?: string; // Maps to metaDescription
+  // Navigation properties
   category: ProductCategory;
   vendor: User;
   images: ProductImage[];
@@ -208,24 +215,28 @@ export interface Payment {
 }
 
 // Enums
-export enum OrderStatus {
-  Pending = 'Pending',
-  Confirmed = 'Confirmed',
-  Processing = 'Processing',
-  Shipped = 'Shipped',
-  Delivered = 'Delivered',
-  Cancelled = 'Cancelled',
-  Returned = 'Returned',
-  Refunded = 'Refunded'
-}
+export const OrderStatus = {
+  Pending: 'Pending',
+  Confirmed: 'Confirmed',
+  Processing: 'Processing',
+  Shipped: 'Shipped',
+  Delivered: 'Delivered',
+  Cancelled: 'Cancelled',
+  Returned: 'Returned',
+  Refunded: 'Refunded'
+} as const;
 
-export enum PaymentStatus {
-  Pending = 'Pending',
-  Completed = 'Completed',
-  Failed = 'Failed',
-  Cancelled = 'Cancelled',
-  Refunded = 'Refunded'
-}
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
+
+export const PaymentStatus = {
+  Pending: 'Pending',
+  Completed: 'Completed',
+  Failed: 'Failed',
+  Cancelled: 'Cancelled',
+  Refunded: 'Refunded'
+} as const;
+
+export type PaymentStatus = typeof PaymentStatus[keyof typeof PaymentStatus];
 
 // API Response types
 export interface ApiResponse<T> {
@@ -282,18 +293,22 @@ export interface ProductFilters {
   tags?: string[];
 }
 
-export enum ProductSortBy {
-  Name = 'name',
-  Price = 'price',
-  CreatedAt = 'createdAt',
-  Rating = 'rating',
-  Popularity = 'popularity'
-}
+export const ProductSortBy = {
+  Name: 'name',
+  Price: 'price',
+  CreatedAt: 'createdAt',
+  Rating: 'rating',
+  Popularity: 'popularity'
+} as const;
 
-export enum SortOrder {
-  Asc = 'asc',
-  Desc = 'desc'
-}
+export type ProductSortBy = typeof ProductSortBy[keyof typeof ProductSortBy];
+
+export const SortOrder = {
+  Asc: 'asc',
+  Desc: 'desc'
+} as const;
+
+export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 // Form types
 export interface ContactForm {

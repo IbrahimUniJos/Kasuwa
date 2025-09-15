@@ -60,6 +60,22 @@ export interface ProductDto {
   variants: ProductVariantDto[];
 }
 
+export interface ProductListDto {
+  id: number;
+  name: string;
+  price: number;
+  comparePrice?: number;
+  sku: string;
+  isActive: boolean;
+  stockQuantity: number;
+  categoryName: string;
+  primaryImageUrl?: string;
+  averageRating: number;
+  reviewCount: number;
+  inStock: boolean;
+  createdDate: string; // ISO date string
+}
+
 export interface ProductImageDto {
   id: number;
   imageUrl: string;

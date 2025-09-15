@@ -221,7 +221,7 @@ Develop a comprehensive Online Marketplace Platform that connects multiple vendo
 
 #### 6.1.1 Frontend
 - **Framework:** Vite.js with React/Vue
-- **Styling:** CSS3, Bootstrap/Tailwind CSS
+- **Styling:** Tailwind CSS
 - **State Management:** Redux/Vuex
 - **Build Tools:** Vite bundler
 

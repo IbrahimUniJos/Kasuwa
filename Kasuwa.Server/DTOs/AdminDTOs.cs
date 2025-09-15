@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Kasuwa.Server.Models;
 
 namespace Kasuwa.Server.DTOs

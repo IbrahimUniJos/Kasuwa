@@ -15,10 +15,136 @@ import AuthModal from './components/ui/AuthModal';
 import CartDrawer from './components/ui/CartDrawer';
 
 // Services and Types
+import { 
+  productService, 
+  categoryService, 
+  authService, 
+  cartService, 
+  wishlistService 
+} from './services';
 import type { User, Product, Cart, ProductCategory } from './types';
 import type { LoginDto, RegisterDto } from './types/api';
 
 import './App.css';
+
+// Helper mapping functions
+const mapVendorDtoToUser = (vendorDto: any): User => ({
+  id: vendorDto.id,
+  firstName: vendorDto.firstName,
+  lastName: vendorDto.lastName,
+  email: vendorDto.email,
+  phoneNumber: vendorDto.phoneNumber,
+  isEmailConfirmed: true,
+  profilePictureUrl: vendorDto.logoUrl,
+  addresses: [],
+  createdAt: new Date(),
+  updatedAt: new Date()
+});
+
+const mapProductDtoToProduct = (productDto: any): Product => ({
+  id: productDto.id,
+  vendorId: productDto.vendorId,
+  name: productDto.name,
+  description: productDto.description,
+  price: productDto.price,
+  stockQuantity: 0,
+  sku: productDto.sku,
+  isActive: productDto.isActive,
+  createdDate: new Date(productDto.createdAt),
+  updatedDate: new Date(productDto.createdAt),
+  categoryId: productDto.categoryId,
+  comparePrice: productDto.compareAtPrice,
+  weight: 0,
+  weightUnit: undefined,
+  requiresShipping: true,
+  trackQuantity: true,
+  continueSellingWhenOutOfStock: false,
+  metaTitle: undefined,
+  metaDescription: undefined,
+  quantity: 0,
+  compareAtPrice: productDto.compareAtPrice,
+  isFeatured: true,
+  createdAt: new Date(productDto.createdAt),
+  updatedAt: new Date(productDto.createdAt),
+  seoTitle: undefined,
+  seoDescription: undefined,
+  category: productDto.category,
+  vendor: mapVendorDtoToUser(productDto.vendor),
+  images: productDto.images?.map((img: any) => ({
+    id: img.id,
+    productId: productDto.id,
+    imageUrl: img.imageUrl,
+    altText: img.altText,
+    displayOrder: img.displayOrder,
+    isMain: img.isMain
+  })) || [],
+  variants: productDto.variants || [],
+  reviews: [],
+  averageRating: productDto.averageRating,
+  totalReviews: productDto.totalReviews
+});
+
+// Mapping function for ProductListDto (from search/list endpoints)
+const mapProductListDtoToProduct = (productListDto: any): Product => ({
+  id: productListDto.id,
+  vendorId: '', // Not available in list view
+  name: productListDto.name,
+  description: '', // Not available in list view
+  price: productListDto.price,
+  stockQuantity: productListDto.stockQuantity,
+  sku: productListDto.sku,
+  isActive: productListDto.isActive,
+  createdDate: new Date(productListDto.createdDate),
+  updatedDate: new Date(productListDto.createdDate),
+  categoryId: 0, // Not available, will be derived from categoryName
+  comparePrice: productListDto.comparePrice,
+  weight: 0,
+  weightUnit: undefined,
+  requiresShipping: true,
+  trackQuantity: true,
+  continueSellingWhenOutOfStock: false,
+  metaTitle: undefined,
+  metaDescription: undefined,
+  quantity: productListDto.stockQuantity,
+  compareAtPrice: productListDto.comparePrice,
+  isFeatured: true,
+  createdAt: new Date(productListDto.createdDate),
+  updatedAt: new Date(productListDto.createdDate),
+  seoTitle: undefined,
+  seoDescription: undefined,
+  category: {
+    id: 0, // Will need to be resolved
+    name: productListDto.categoryName,
+    slug: productListDto.categoryName.toLowerCase().replace(/\s+/g, '-'),
+    isActive: true,
+    displayOrder: 0,
+    subCategories: []
+  },
+  vendor: {
+    id: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phoneNumber: undefined,
+    isEmailConfirmed: true,
+    profilePictureUrl: undefined,
+    addresses: [],
+    createdAt: new Date(),
+    updatedAt: new Date()
+  },
+  images: productListDto.primaryImageUrl ? [{
+    id: 0,
+    productId: productListDto.id,
+    imageUrl: productListDto.primaryImageUrl,
+    altText: productListDto.name,
+    displayOrder: 1,
+    isMain: true
+  }] : [],
+  variants: [],
+  reviews: [],
+  averageRating: productListDto.averageRating,
+  totalReviews: productListDto.reviewCount
+});
 
 function App() {
   // State Management
@@ -33,6 +159,7 @@ function App() {
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Load initial data
   useEffect(() => {
@@ -41,78 +168,141 @@ function App() {
 
   const loadInitialData = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
-      // For demo purposes, we'll create mock data since API might not be available
-      // In production, these would call the actual API endpoints
-      const mockProducts: Product[] = [
-        {
-          id: 1,
-          name: "Traditional Hausa Embroidered Gown",
-          description: "Beautiful handcrafted traditional gown with intricate embroidery",
-          sku: "THG001",
-          price: 15000,
-          compareAtPrice: 20000,
-          trackQuantity: true,
-          quantity: 50,
-          categoryId: 1,
-          vendorId: "vendor1",
-          isActive: true,
-          isFeatured: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          category: { id: 1, name: "Traditional Textiles", slug: "traditional-textiles", isActive: true, displayOrder: 1, subCategories: [] },
-          vendor: { id: "vendor1", firstName: "Amina", lastName: "Ibrahim", email: "amina@example.com", isEmailConfirmed: true, addresses: [], createdAt: new Date(), updatedAt: new Date() },
-          images: [{ id: 1, productId: 1, imageUrl: "/api/placeholder/400/400", displayOrder: 1, isMain: true }],
-          variants: [],
-          reviews: [],
-          averageRating: 4.8,
-          totalReviews: 24
-        }
-      ];
+      // Load products and categories in parallel
+      const [productsResponse, categoriesResponse] = await Promise.allSettled([
+        productService.getProducts({ pageSize: 20 }), // Use general products endpoint
+        categoryService.getCategories()
+      ]);
 
-      const mockCategories: ProductCategory[] = [
-        { id: 1, name: "Traditional Textiles", slug: "traditional-textiles", isActive: true, displayOrder: 1, subCategories: [] },
-        { id: 2, name: "Handcrafted Jewelry", slug: "handcrafted-jewelry", isActive: true, displayOrder: 2, subCategories: [] }
-      ];
-      
-      setProducts(mockProducts);
-      setCategories(mockCategories);
+      // Handle products response
+      if (productsResponse.status === 'fulfilled') {
+        const mappedProducts: Product[] = productsResponse.value.data.map(mapProductListDtoToProduct);
+        setProducts(mappedProducts);
+      } else {
+        console.error('Failed to load products:', productsResponse.reason);
+        setError('Failed to load products. Please try again.');
+      }
+
+      // Handle categories response
+      if (categoriesResponse.status === 'fulfilled') {
+        setCategories(categoriesResponse.value);
+      } else {
+        console.error('Failed to load categories:', categoriesResponse.reason);
+        // Categories failure is not critical, so we don't set error state
+      }
 
       // Check if user is already authenticated
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem('kasuwa_auth_token');
       if (token) {
         try {
-          // In production, verify token with backend
-          console.log('User token found, would verify with backend');
-        } catch (error) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
+          const currentUser = await authService.getCurrentUser();
+          // Map UserDto to User interface
+          const mappedUser: User = {
+            id: currentUser.id,
+            firstName: currentUser.firstName,
+            lastName: currentUser.lastName,
+            email: currentUser.email,
+            phoneNumber: currentUser.phoneNumber,
+            isEmailConfirmed: currentUser.isEmailConfirmed,
+            profilePictureUrl: currentUser.profilePictureUrl,
+            addresses: [], // Will be loaded separately if needed
+            createdAt: new Date(currentUser.createdAt),
+            updatedAt: new Date(currentUser.createdAt)
+          };
+          setUser(mappedUser);
+
+          // Load user's cart and wishlist
+          await Promise.allSettled([
+            loadUserCart(),
+            loadUserWishlist()
+          ]);
+        } catch (authError) {
+          console.error('Authentication check failed:', authError);
+          // Clear invalid token
+          localStorage.removeItem('kasuwa_auth_token');
         }
       }
     } catch (error) {
       console.error('Failed to load initial data:', error);
+      setError('Failed to load application data. Please refresh the page.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserCart = async () => {
+    try {
+      const cartDto = await cartService.getCart();
+      // Map CartDto to Cart interface
+      const mappedCart: Cart = {
+        id: cartDto.id,
+        userId: cartDto.userId,
+        createdAt: new Date(cartDto.createdAt),
+        updatedAt: new Date(cartDto.createdAt), // Use createdAt as fallback
+        items: cartDto.items?.map(itemDto => ({
+          id: itemDto.id,
+          cartId: cartDto.id, // Map from parent cart
+          productId: itemDto.productId,
+          quantity: itemDto.quantity,
+          unitPrice: itemDto.unitPrice,
+          totalPrice: itemDto.totalPrice,
+          productVariant: itemDto.productVariant,
+          createdAt: new Date(cartDto.createdAt), // Use cart createdAt as fallback
+          product: mapProductDtoToProduct(itemDto.product)
+        })) || [],
+        totalItems: cartDto.totalItems,
+        totalAmount: cartDto.totalAmount
+      };
+      setCart(mappedCart);
+    } catch (error) {
+      console.error('Failed to load cart:', error);
+      // Cart failure is not critical for initial load
+    }
+  };
+
+  const loadUserWishlist = async () => {
+    try {
+      const wishlistDto = await wishlistService.getWishlist();
+      const wishlistIds = new Set(
+        wishlistDto.items?.map(item => item.productId) || []
+      );
+      setWishlistProductIds(wishlistIds);
+    } catch (error) {
+      console.error('Failed to load wishlist:', error);
+      // Wishlist failure is not critical for initial load
     }
   };
 
   // Authentication Handlers
   const handleLogin = async (credentials: LoginDto) => {
     try {
-      console.log('Login attempt:', credentials);
-      // Mock successful login
-      const mockUser: User = {
-        id: "user1",
-        firstName: "John",
-        lastName: "Doe",
-        email: credentials.email,
-        isEmailConfirmed: true,
-        addresses: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
+      const authResponse = await authService.login(credentials);
+      
+      // Map UserDto to User interface
+      const mappedUser: User = {
+        id: authResponse.user.id,
+        firstName: authResponse.user.firstName,
+        lastName: authResponse.user.lastName,
+        email: authResponse.user.email,
+        phoneNumber: authResponse.user.phoneNumber,
+        isEmailConfirmed: authResponse.user.isEmailConfirmed,
+        profilePictureUrl: authResponse.user.profilePictureUrl,
+        addresses: [], // Will be loaded separately if needed
+        createdAt: new Date(authResponse.user.createdAt),
+        updatedAt: new Date(authResponse.user.createdAt)
       };
-      setUser(mockUser);
+      
+      setUser(mappedUser);
       setShowAuthModal(false);
+      
+      // Load user's cart and wishlist after successful login
+      await Promise.allSettled([
+        loadUserCart(),
+        loadUserWishlist()
+      ]);
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -121,21 +311,30 @@ function App() {
 
   const handleRegister = async (userData: RegisterDto) => {
     try {
-      console.log('Register attempt:', userData);
-      // Mock successful registration
-      const mockUser: User = {
-        id: "user1",
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        email: userData.email,
-        phoneNumber: userData.phoneNumber,
-        isEmailConfirmed: true,
-        addresses: [],
-        createdAt: new Date(),
-        updatedAt: new Date()
+      const authResponse = await authService.register(userData);
+      
+      // Map UserDto to User interface
+      const mappedUser: User = {
+        id: authResponse.user.id,
+        firstName: authResponse.user.firstName,
+        lastName: authResponse.user.lastName,
+        email: authResponse.user.email,
+        phoneNumber: authResponse.user.phoneNumber,
+        isEmailConfirmed: authResponse.user.isEmailConfirmed,
+        profilePictureUrl: authResponse.user.profilePictureUrl,
+        addresses: [], // Will be loaded separately if needed
+        createdAt: new Date(authResponse.user.createdAt),
+        updatedAt: new Date(authResponse.user.createdAt)
       };
-      setUser(mockUser);
+      
+      setUser(mappedUser);
       setShowAuthModal(false);
+      
+      // Initialize cart and wishlist for new user
+      await Promise.allSettled([
+        loadUserCart(),
+        loadUserWishlist()
+      ]);
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;
@@ -150,25 +349,109 @@ function App() {
       return;
     }
 
-    console.log('Add to cart:', productId);
-    // Mock cart update
-    setCart(prev => ({
-      id: 1,
-      userId: user.id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      items: [],
-      totalItems: (prev?.totalItems || 0) + 1,
-      totalAmount: (prev?.totalAmount || 0) + 15000
-    }));
+    try {
+      const updatedCart = await cartService.addToCart({
+        productId,
+        quantity: 1
+      });
+      
+      // Map the updated cart
+      const mappedCart: Cart = {
+        id: updatedCart.id,
+        userId: updatedCart.userId,
+        createdAt: new Date(updatedCart.createdAt),
+        updatedAt: new Date(updatedCart.createdAt),
+        items: updatedCart.items?.map(itemDto => ({
+          id: itemDto.id,
+          cartId: updatedCart.id,
+          productId: itemDto.productId,
+          quantity: itemDto.quantity,
+          unitPrice: itemDto.unitPrice,
+          totalPrice: itemDto.totalPrice,
+          productVariant: itemDto.productVariant,
+          createdAt: new Date(updatedCart.createdAt),
+          product: mapProductDtoToProduct(itemDto.product)
+        })) || [],
+        totalItems: updatedCart.totalItems,
+        totalAmount: updatedCart.totalAmount
+      };
+      
+      setCart(mappedCart);
+    } catch (error) {
+      console.error('Failed to add item to cart:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   const handleUpdateCartQuantity = async (itemId: number, quantity: number) => {
-    console.log('Update cart quantity:', itemId, quantity);
+    if (!user) return;
+
+    try {
+      const updatedCart = await cartService.updateCartItem({
+        cartItemId: itemId,
+        quantity
+      });
+      
+      // Map the updated cart (same as above)
+      const mappedCart: Cart = {
+        id: updatedCart.id,
+        userId: updatedCart.userId,
+        createdAt: new Date(updatedCart.createdAt),
+        updatedAt: new Date(updatedCart.createdAt),
+        items: updatedCart.items?.map(itemDto => ({
+          id: itemDto.id,
+          cartId: updatedCart.id,
+          productId: itemDto.productId,
+          quantity: itemDto.quantity,
+          unitPrice: itemDto.unitPrice,
+          totalPrice: itemDto.totalPrice,
+          productVariant: itemDto.productVariant,
+          createdAt: new Date(updatedCart.createdAt),
+          product: mapProductDtoToProduct(itemDto.product)
+        })) || [],
+        totalItems: updatedCart.totalItems,
+        totalAmount: updatedCart.totalAmount
+      };
+      
+      setCart(mappedCart);
+    } catch (error) {
+      console.error('Failed to update cart item:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   const handleRemoveFromCart = async (itemId: number) => {
-    console.log('Remove from cart:', itemId);
+    if (!user) return;
+
+    try {
+      const updatedCart = await cartService.removeFromCart(itemId);
+      
+      // Map the updated cart (same as above)
+      const mappedCart: Cart = {
+        id: updatedCart.id,
+        userId: updatedCart.userId,
+        createdAt: new Date(updatedCart.createdAt),
+        updatedAt: new Date(updatedCart.createdAt),
+        items: updatedCart.items?.map(itemDto => ({
+          id: itemDto.id,
+          cartId: updatedCart.id,
+          productId: itemDto.productId,
+          quantity: itemDto.quantity,
+          unitPrice: itemDto.unitPrice,
+          totalPrice: itemDto.totalPrice,
+          productVariant: itemDto.productVariant,
+          createdAt: new Date(updatedCart.createdAt),
+          product: mapProductDtoToProduct(itemDto.product)
+        })) || [],
+        totalItems: updatedCart.totalItems,
+        totalAmount: updatedCart.totalAmount
+      };
+      
+      setCart(mappedCart);
+    } catch (error) {
+      console.error('Failed to remove item from cart:', error);
+      // TODO: Show error toast to user
+    }
   };
 
   // Other handlers
@@ -179,13 +462,30 @@ function App() {
       return;
     }
 
-    const newWishlistIds = new Set(wishlistProductIds);
-    if (wishlistProductIds.has(productId)) {
-      newWishlistIds.delete(productId);
-    } else {
-      newWishlistIds.add(productId);
+    try {
+      const isInWishlist = wishlistProductIds.has(productId);
+      
+      if (isInWishlist) {
+        // Find the wishlist item to remove
+        const wishlistDto = await wishlistService.getWishlist();
+        const itemToRemove = wishlistDto.items?.find(item => item.productId === productId);
+        
+        if (itemToRemove) {
+          await wishlistService.removeFromWishlist(itemToRemove.id);
+          const newWishlistIds = new Set(wishlistProductIds);
+          newWishlistIds.delete(productId);
+          setWishlistProductIds(newWishlistIds);
+        }
+      } else {
+        await wishlistService.addToWishlist({ productId });
+        const newWishlistIds = new Set(wishlistProductIds);
+        newWishlistIds.add(productId);
+        setWishlistProductIds(newWishlistIds);
+      }
+    } catch (error) {
+      console.error('Failed to toggle wishlist:', error);
+      // TODO: Show error toast to user
     }
-    setWishlistProductIds(newWishlistIds);
   };
 
   const handleExploreProducts = () => {
@@ -227,6 +527,29 @@ function App() {
           </div>
           <div className="w-8 h-8 border-2 border-kasuwa-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading Kasuwa marketplace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="w-16 h-16 bg-red-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <span className="text-red-500 text-2xl">⚠</span>
+          </div>
+          <h1 className="text-xl font-semibold text-gray-900 mb-2">Something went wrong</h1>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              loadInitialData();
+            }}
+            className="bg-kasuwa-primary-600 text-white px-6 py-2 rounded-lg hover:bg-kasuwa-primary-700 transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );

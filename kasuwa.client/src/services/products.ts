@@ -2,6 +2,7 @@
 import { apiClient, unwrapApiResponse, unwrapPaginatedResponse } from './api';
 import type { 
   ProductDto, 
+  ProductListDto,
   CategoryDto,
   ProductQueryParams,
   CreateProductDto,
@@ -14,9 +15,19 @@ export class ProductService {
   /**
    * Get paginated list of products with filters
    */
-  async getProducts(params?: ProductQueryParams): Promise<PaginatedApiResponse<ProductDto>> {
-    const response = await apiClient.get<PaginatedApiResponse<ProductDto>>('/products', params);
-    return unwrapPaginatedResponse(response);
+  async getProducts(params?: ProductQueryParams): Promise<PaginatedApiResponse<ProductListDto>> {
+    const response = await apiClient.get<any>('/products', params);
+    
+    // Transform backend response structure to match frontend expectation
+    return {
+      data: response.products || [],
+      totalCount: response.totalCount || 0,
+      pageSize: response.pageSize || 20,
+      currentPage: response.pageNumber || 1,
+      totalPages: response.totalPages || 0,
+      hasNextPage: response.hasNextPage || false,
+      hasPreviousPage: response.hasPreviousPage || false
+    };
   }
 
   /**
