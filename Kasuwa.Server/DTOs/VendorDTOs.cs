@@ -13,6 +13,22 @@ namespace Kasuwa.Server.DTOs
         public string? BusinessDescription { get; set; }
     }
 
+    public class UpdateVendorBusinessProfileDto
+    {
+        [Required]
+        [StringLength(100, ErrorMessage = "Business name cannot exceed 100 characters")]
+        public string BusinessName { get; set; } = string.Empty;
+        
+        [StringLength(500, ErrorMessage = "Business description cannot exceed 500 characters")]
+        public string? BusinessDescription { get; set; }
+        
+        [StringLength(200, ErrorMessage = "Business address cannot exceed 200 characters")]
+        public string? BusinessAddress { get; set; }
+        
+        [Phone(ErrorMessage = "Invalid phone number format")]
+        public string? BusinessPhone { get; set; }
+    }
+
     public class VendorDashboardStatsDto
     {
         public int TotalProducts { get; set; }
@@ -24,56 +40,171 @@ namespace Kasuwa.Server.DTOs
         public int TotalCustomers { get; set; }
         public double AverageRating { get; set; }
     }
-
-    public class UpdateVendorBusinessProfileDto
+    
+    public class VendorAnalyticsDto
     {
-        [Required(ErrorMessage = "Business name is required")]
-        [StringLength(100, MinimumLength = 2, ErrorMessage = "Business name must be between 2 and 100 characters")]
-        public string BusinessName { get; set; } = string.Empty;
-        
-        [Required(ErrorMessage = "Business description is required")]
-        [StringLength(500, MinimumLength = 10, ErrorMessage = "Business description must be between 10 and 500 characters")]
-        public string BusinessDescription { get; set; } = string.Empty;
-        
-        [StringLength(200, ErrorMessage = "Business address cannot exceed 200 characters")]
-        public string? BusinessAddress { get; set; }
-        
-        [Phone(ErrorMessage = "Invalid phone number format")]
-        public string? BusinessPhone { get; set; }
+        public List<ProductPerformanceDto> ProductPerformance { get; set; } = new List<ProductPerformanceDto>();
+        public List<MonthlySalesDto> MonthlySales { get; set; } = new List<MonthlySalesDto>();
+        public List<CategorySalesDto> CategoryBreakdown { get; set; } = new List<CategorySalesDto>();
+        public List<object> TopSellingProducts { get; set; } = new List<object>(); // Will contain ProductListDto objects
+        public List<string> RecentActivity { get; set; } = new List<string>();
     }
-
-    // Admin Dashboard DTOs
-    public class AdminDashboardStatsDto
+    
+    public class ProductPerformanceDto
     {
-        public int TotalUsers { get; set; }
-        public int TotalCustomers { get; set; }
-        public int TotalVendors { get; set; }
-        public int ApprovedVendors { get; set; }
-        public int PendingVendorApplications { get; set; }
-        public int ActiveUsers { get; set; }
-        public int InactiveUsers { get; set; }
-        public int NewUsersThisMonth { get; set; }
-        public decimal TotalPlatformRevenue { get; set; }
-        public decimal MonthlyPlatformRevenue { get; set; }
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public int Views { get; set; }
+        public int Sales { get; set; }
+        public decimal Revenue { get; set; }
+        public double ConversionRate { get; set; }
+    }
+    
+    public class MonthlySalesDto
+    {
+        public string Month { get; set; } = string.Empty;
+        public int Sales { get; set; }
+        public decimal Revenue { get; set; }
+    }
+    
+    public class CategorySalesDto
+    {
+        public string CategoryName { get; set; } = string.Empty;
+        public int ProductCount { get; set; }
+        public decimal TotalRevenue { get; set; }
+    }
+    
+    // Vendor Order Management DTOs
+    public class VendorOrderDto
+    {
+        public int Id { get; set; }
+        public string OrderNumber { get; set; } = string.Empty;
+        public DateTime OrderDate { get; set; }
+        public OrderStatus Status { get; set; }
+        public decimal TotalAmount { get; set; }
+        public int ItemCount { get; set; }
+        public string? TrackingNumber { get; set; }
+        public DateTime? EstimatedDeliveryDate { get; set; }
+        public List<VendorOrderItemDto> OrderItems { get; set; } = new List<VendorOrderItemDto>();
+        public List<OrderTrackingDto> OrderTrackings { get; set; } = new List<OrderTrackingDto>();
+    }
+    
+    public class VendorOrderItemDto
+    {
+        public int Id { get; set; }
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string? ProductSKU { get; set; }
+        public string? ProductVariant { get; set; }
+        public int Quantity { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal TotalPrice { get; set; }
+    }
+    
+    public class VendorOrderSearchDto
+    {
+        public OrderStatus? Status { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+        public decimal? MinAmount { get; set; }
+        public decimal? MaxAmount { get; set; }
+        public string SortBy { get; set; } = "orderDate"; // orderDate, totalAmount, status
+        public string SortDirection { get; set; } = "desc"; // asc, desc
+        public int PageNumber { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
+    }
+    
+    public class VendorOrderSearchResultDto
+    {
+        public List<VendorOrderDto> Orders { get; set; } = new List<VendorOrderDto>();
+        public int TotalCount { get; set; }
+        public int PageNumber { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+        public bool HasPreviousPage => PageNumber > 1;
+        public bool HasNextPage => PageNumber < TotalPages;
+    }
+    
+    // Vendor Inventory Management DTOs
+    public class VendorInventoryDto
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string? ProductSKU { get; set; }
+        public int CurrentStock { get; set; }
+        public int LowStockThreshold { get; set; }
+        public bool IsLowStock { get; set; }
+        public int ReservedStock { get; set; }
+        public DateTime LastUpdated { get; set; }
+    }
+    
+    public class UpdateInventoryDto
+    {
+        [Required]
+        public int ProductId { get; set; }
+        
+        [Required]
+        [Range(0, int.MaxValue)]
+        public int StockQuantity { get; set; }
+        
+        [Range(0, int.MaxValue)]
+        public int LowStockThreshold { get; set; } = 5;
+    }
+    
+    // Vendor Communication DTOs
+    public class VendorMessageDto
+    {
+        public int Id { get; set; }
+        public string Subject { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public string From { get; set; } = string.Empty;
+        public string To { get; set; } = string.Empty;
+        public bool IsRead { get; set; }
+        public DateTime SentDate { get; set; }
+        public DateTime? ReadDate { get; set; }
+    }
+    
+    public class SendVendorMessageDto
+    {
+        [Required]
+        public string ToUserId { get; set; } = string.Empty;
+        
+        [Required]
+        [MaxLength(200)]
+        public string Subject { get; set; } = string.Empty;
+        
+        [Required]
+        [MaxLength(2000)]
+        public string Content { get; set; } = string.Empty;
+    }
+    
+    // Vendor Performance Metrics DTOs
+    public class VendorPerformanceDto
+    {
         public int TotalOrders { get; set; }
-        public int TotalProducts { get; set; }
+        public int CompletedOrders { get; set; }
+        public int CancelledOrders { get; set; }
+        public decimal TotalRevenue { get; set; }
+        public decimal AverageOrderValue { get; set; }
+        public double AverageRating { get; set; }
+        public int TotalReviews { get; set; }
+        public double CancellationRate { get; set; }
+        public double OnTimeDeliveryRate { get; set; }
+        public DateTime Last30DaysFrom { get; set; }
+        public DateTime Last30DaysTo { get; set; }
     }
-
-    public class VendorApplicationDto
+    
+    public class VendorPayoutDto
     {
-        public string Id { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string FirstName { get; set; } = string.Empty;
-        public string LastName { get; set; } = string.Empty;
-        public string? BusinessName { get; set; }
-        public string? BusinessDescription { get; set; }
-        public string? BusinessAddress { get; set; }
-        public string? BusinessPhone { get; set; }
-        public DateTime DateCreated { get; set; }
-        public bool IsApproved { get; set; }
-        public DateTime? ApprovedDate { get; set; }
+        public int Id { get; set; }
+        public decimal Amount { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public DateTime PayoutDate { get; set; }
+        public DateTime? ProcessedDate { get; set; }
+        public string? PaymentMethod { get; set; }
+        public string? TransactionId { get; set; }
     }
-
+    
     // Enhanced validation DTOs
     public class EnhancedRegisterRequestDto
     {

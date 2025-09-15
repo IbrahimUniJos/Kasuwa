@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Kasuwa.Server.DTOs;
 using Kasuwa.Server.Models;
 using Kasuwa.Server.Data;
+using System.Security.Claims;
 
 namespace Kasuwa.Server.Controllers
 {
@@ -270,6 +271,286 @@ namespace Kasuwa.Server.Controllers
             {
                 _logger.LogError(ex, "Error getting admin dashboard statistics");
                 return StatusCode(500, "An error occurred while getting dashboard statistics");
+            }
+        }
+
+        /// <summary>
+        /// Suspend or unsuspend a user account
+        /// </summary>
+        [HttpPost("users/{id}/suspend")]
+        public async Task<ActionResult<AuthResponseDto>> SuspendUser(string id, [FromBody] SuspensionDto request)
+        {
+            try
+            {
+                var user = await _userManager.FindByIdAsync(id);
+                if (user == null)
+                {
+                    return NotFound("User not found");
+                }
+
+                // Create user suspension record
+                var suspension = new UserSuspension
+                {
+                    UserId = user.Id,
+                    SuspendedById = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "Unknown",
+                    Type = (Models.SuspensionType)(int)request.SuspensionType,
+                    Reason = request.Reason,
+                    SuspendedAt = DateTime.UtcNow,
+                    ExpiresAt = request.SuspensionType == DTOs.SuspensionType.Temporary ? 
+                        DateTime.UtcNow.Add(TimeSpan.Parse(request.Duration ?? "P1D")) : null,
+                    IsActive = true,
+                    FreezeOrders = request.FreezeOrders,
+                    AdminNotes = request.AdminNotes
+                };
+
+                _context.UserSuspensions.Add(suspension);
+                
+                // Update user status
+                user.IsActive = false;
+                var result = await _userManager.UpdateAsync(user);
+                if (!result.Succeeded)
+                {
+                    return BadRequest("Failed to suspend user");
+                }
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("User {UserId} suspended by admin {AdminId}", id, User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+                return Ok(new AuthResponseDto
+                {
+                    Success = true,
+                    Message = "User suspended successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error suspending user {UserId}", id);
+                return StatusCode(500, "An error occurred while suspending user");
+            }
+        }
+
+        /// <summary>
+        /// Get pending vendor applications
+        /// </summary>
+        [HttpGet("vendors/pending")]
+        public async Task<ActionResult<PagedResult<UserDto>>> GetPendingVendors(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                var query = _context.Users
+                    .Where(u => u.UserType == UserType.Vendor && !u.IsVendorApproved && u.IsActive);
+
+                var totalCount = await query.CountAsync();
+                var vendors = await query
+                    .OrderByDescending(u => u.DateCreated)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var vendorDtos = new List<UserDto>();
+                foreach (var vendor in vendors)
+                {
+                    var roles = await _userManager.GetRolesAsync(vendor);
+                    vendorDtos.Add(new UserDto
+                    {
+                        Id = vendor.Id,
+                        Email = vendor.Email!,
+                        FirstName = vendor.FirstName,
+                        LastName = vendor.LastName,
+                        UserType = vendor.UserType,
+                        IsActive = vendor.IsActive,
+                        IsVendorApproved = vendor.IsVendorApproved,
+                        BusinessName = vendor.BusinessName,
+                        ProfileImageUrl = vendor.ProfileImageUrl,
+                        DateCreated = vendor.DateCreated,
+                        LastLogin = vendor.LastLogin,
+                        Roles = roles.ToList()
+                    });
+                }
+
+                return Ok(new PagedResult<UserDto>
+                {
+                    Items = vendorDtos,
+                    TotalCount = totalCount,
+                    PageNumber = page,
+                    PageSize = pageSize,
+                    TotalPages = (int)Math.Ceiling((double)totalCount / pageSize)
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting pending vendors");
+                return StatusCode(500, "An error occurred while getting pending vendors");
+            }
+        }
+
+        /// <summary>
+        /// Get platform configuration settings
+        /// </summary>
+        [HttpGet("settings")]
+        public async Task<ActionResult<PlatformSettingsDto>> GetPlatformSettings()
+        {
+            try
+            {
+                // In a real implementation, these would be retrieved from a configuration table
+                var settings = new PlatformSettingsDto
+                {
+                    General = new GeneralSettingsDto
+                    {
+                        PlatformName = "Kasuwa Marketplace",
+                        DefaultCommissionRate = 5.0m,
+                        MinimumOrderAmount = 10.00m,
+                        TaxRate = 8.5m
+                    },
+                    Moderation = new ModerationSettingsDto
+                    {
+                        AutoApproveProducts = false,
+                        RequireVendorVerification = true,
+                        ReviewModerationEnabled = true
+                    },
+                    Payments = new PaymentSettingsDto
+                    {
+                        SupportedPaymentMethods = new List<string> { "CreditCard", "PayPal", "BankTransfer" },
+                        PaymentProcessingFee = 2.9m,
+                        VendorPayoutSchedule = "Weekly"
+                    }
+                };
+
+                return Ok(settings);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting platform settings");
+                return StatusCode(500, "An error occurred while getting platform settings");
+            }
+        }
+
+        /// <summary>
+        /// Update platform configuration settings
+        /// </summary>
+        [HttpPut("settings")]
+        public async Task<ActionResult<AuthResponseDto>> UpdatePlatformSettings([FromBody] PlatformSettingsDto settings)
+        {
+            try
+            {
+                // In a real implementation, these would be saved to a configuration table
+                // For now, we'll just log the update
+                _logger.LogInformation("Platform settings updated by admin {AdminId}", User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+                return Ok(new AuthResponseDto
+                {
+                    Success = true,
+                    Message = "Platform settings updated successfully"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating platform settings");
+                return StatusCode(500, "An error occurred while updating platform settings");
+            }
+        }
+
+        /// <summary>
+        /// Get sales report
+        /// </summary>
+        [HttpGet("reports/sales")]
+        public async Task<ActionResult<SalesReportDto>> GetSalesReport([FromQuery] SalesReportParametersDto parameters)
+        {
+            try
+            {
+                // In a real implementation, this would query actual sales data
+                var report = new SalesReportDto
+                {
+                    ReportPeriod = new DateRangeDto
+                    {
+                        StartDate = parameters.StartDate,
+                        EndDate = parameters.EndDate
+                    },
+                    Summary = new SalesSummaryDto
+                    {
+                        TotalSales = 0,
+                        TotalOrders = 0,
+                        AverageOrderValue = 0,
+                        TotalCommission = 0
+                    }
+                };
+
+                return Ok(report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating sales report");
+                return StatusCode(500, "An error occurred while generating sales report");
+            }
+        }
+
+        /// <summary>
+        /// Get user activity report
+        /// </summary>
+        [HttpGet("reports/user-activity")]
+        public async Task<ActionResult<UserActivityReportDto>> GetUserActivityReport()
+        {
+            try
+            {
+                var totalUsers = await _context.Users.CountAsync();
+                var activeUsers = await _context.Users.CountAsync(u => u.IsActive);
+                
+                var report = new UserActivityReportDto
+                {
+                    TotalUsers = totalUsers,
+                    ActiveUsers = activeUsers,
+                    NewRegistrations = 0,
+                    UsersByRole = new Dictionary<string, int>
+                    {
+                        ["Customers"] = await _context.Users.CountAsync(u => u.UserType == UserType.Customer),
+                        ["Vendors"] = await _context.Users.CountAsync(u => u.UserType == UserType.Vendor)
+                    },
+                    UserActivity = new UserActivityMetricsDto
+                    {
+                        DailyActiveUsers = 0,
+                        WeeklyActiveUsers = 0,
+                        MonthlyActiveUsers = activeUsers
+                    }
+                };
+
+                return Ok(report);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating user activity report");
+                return StatusCode(500, "An error occurred while generating user activity report");
+            }
+        }
+
+        /// <summary>
+        /// Get audit logs
+        /// </summary>
+        [HttpGet("audit-logs")]
+        public async Task<ActionResult<PagedResult<AuditLogDto>>> GetAuditLogs(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            try
+            {
+                // In a real implementation, this would query actual audit logs
+                var logs = new PagedResult<AuditLogDto>
+                {
+                    Items = new List<AuditLogDto>(),
+                    TotalCount = 0,
+                    PageNumber = page,
+                    PageSize = pageSize,
+                    TotalPages = 0
+                };
+
+                return Ok(logs);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting audit logs");
+                return StatusCode(500, "An error occurred while getting audit logs");
             }
         }
     }

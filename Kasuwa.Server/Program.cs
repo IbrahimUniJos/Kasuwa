@@ -7,6 +7,7 @@ using System.Text;
 using Kasuwa.Server.Data;
 using Kasuwa.Server.Models;
 using Kasuwa.Server.Services;
+using Kasuwa.Server.Extensions;
 
 namespace Kasuwa.Server
 {
@@ -86,6 +87,12 @@ namespace Kasuwa.Server
 
             // Register custom services
             builder.Services.AddScoped<ITokenService, TokenService>();
+            builder.Services.AddScoped<IProductService, ProductService>();
+            builder.Services.AddScoped<IOrderService, OrderService>();
+            builder.Services.AddScoped<ICartService, CartService>();
+            builder.Services.AddScoped<IWishlistService, WishlistService>();
+            builder.Services.AddScoped<IPaymentService, PaymentService>();
+            builder.Services.AddScoped<IReviewService, ReviewService>();
 
             builder.Services.AddControllers();
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
@@ -127,6 +134,12 @@ namespace Kasuwa.Server
 
             // Seed database with default roles and admin user
             await SeedDatabaseAsync(app.Services);
+
+            // Seed sample data for development
+            if (app.Environment.IsDevelopment())
+            {
+                await app.Services.SeedDataAsync();
+            }
 
             app.Run();
         }
