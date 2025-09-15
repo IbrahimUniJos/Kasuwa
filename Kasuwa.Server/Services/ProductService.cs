@@ -91,6 +91,7 @@ namespace Kasuwa.Server.Services
                         SKU = p.SKU,
                         IsActive = p.IsActive,
                         StockQuantity = p.StockQuantity,
+                        ContinueSellingWhenOutOfStock = p.ContinueSellingWhenOutOfStock,
                         CategoryName = p.Category.Name,
                         PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary) != null 
                             ? p.Images.First(i => i.IsPrimary).ImageUrl 
@@ -344,6 +345,7 @@ namespace Kasuwa.Server.Services
                         SKU = p.SKU,
                         IsActive = p.IsActive,
                         StockQuantity = p.StockQuantity,
+                        ContinueSellingWhenOutOfStock = p.ContinueSellingWhenOutOfStock,
                         CategoryName = p.Category.Name,
                         PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary) != null 
                             ? p.Images.First(i => i.IsPrimary).ImageUrl 

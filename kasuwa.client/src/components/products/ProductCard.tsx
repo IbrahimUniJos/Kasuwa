@@ -10,13 +10,21 @@ import {
   HeartIcon as HeartSolidIcon,
   StarIcon as StarSolidIcon 
 } from '@heroicons/react/24/solid';
-import type { Product } from '../../types';
+import type { ProductListDto } from '../../types/api';
+
+// Flexible product type that works with both full Product and ProductListDto
+type ProductCardData = ProductListDto & {
+  images?: Array<{ imageUrl: string; altText?: string; isMain?: boolean }>;
+  vendor?: { firstName: string; lastName: string };
+  category?: { name: string };
+};
 
 interface ProductCardProps {
-  product: Product;
+  product: ProductCardData;
   onAddToCart?: (productId: number) => void;
   onToggleWishlist?: (productId: number) => void;
   onQuickView?: (productId: number) => void;
+  onClick?: (productId: number) => void;
   isInWishlist?: boolean;
   className?: string;
 }
@@ -26,6 +34,7 @@ export default function ProductCard({
   onAddToCart, 
   onToggleWishlist, 
   onQuickView,
+  onClick,
   isInWishlist = false,
   className = ''
 }: ProductCardProps) {
@@ -38,6 +47,25 @@ export default function ProductCard({
     setImageError(true);
   };
 
+  const handleCardClick = () => {
+    onClick?.(product.id);
+  };
+
+  const handleAddToCartClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    onAddToCart?.(product.id);
+  };
+
+  const handleWishlistClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    onToggleWishlist?.(product.id);
+  };
+
+  const handleQuickViewClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    onQuickView?.(product.id);
+  };
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-NG', {
       style: 'currency',
@@ -48,8 +76,17 @@ export default function ProductCard({
   };
 
   const calculateDiscountPercentage = () => {
-    if (!product.compareAtPrice || product.compareAtPrice <= product.price) return 0;
-    return Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100);
+    if (!product.comparePrice || product.comparePrice <= product.price) return 0;
+    return Math.round(((product.comparePrice - product.price) / product.comparePrice) * 100);
+  };
+
+  const getPrimaryImage = () => {
+    if (product.primaryImageUrl) return product.primaryImageUrl;
+    if (product.images && product.images.length > 0) {
+      const primaryImage = product.images.find(img => img.isMain);
+      return primaryImage?.imageUrl || product.images[0]?.imageUrl;
+    }
+    return '/placeholder-product.jpg'; // Default placeholder
   };
 
   const renderStars = (rating: number) => {
@@ -81,10 +118,12 @@ export default function ProductCard({
   };
 
   const discountPercentage = calculateDiscountPercentage();
-  const primaryImage = product.images?.find(img => img.isMain) || product.images?.[0];
 
   return (
-    <div className={`group relative bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 ${className}`}>
+    <div 
+      className={`group relative bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden border border-gray-100 ${onClick ? 'cursor-pointer' : ''} ${className}`}
+      onClick={handleCardClick}
+    >
       {/* Discount Badge */}
       {discountPercentage > 0 && (
         <div className="absolute top-3 left-3 z-10 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
@@ -94,7 +133,7 @@ export default function ProductCard({
 
       {/* Wishlist Button */}
       <button
-        onClick={() => onToggleWishlist?.(product.id)}
+        onClick={handleWishlistClick}
         className="absolute top-3 right-3 z-10 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md hover:bg-white transition-all duration-200 group/wishlist"
         aria-label={isInWishlist ? 'Remove from wishlist' : 'Add to wishlist'}
       >
@@ -106,13 +145,15 @@ export default function ProductCard({
       </button>
 
       {/* Quick View Button */}
-      <button
-        onClick={() => onQuickView?.(product.id)}
-        className="absolute top-3 right-12 z-10 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md hover:bg-white transition-all duration-200 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0"
-        aria-label="Quick view"
-      >
-        <EyeIcon className="h-5 w-5 text-gray-600 hover:text-kasuwa-primary-600 transition-colors" />
-      </button>
+      {onQuickView && (
+        <button
+          onClick={handleQuickViewClick}
+          className="absolute top-3 right-12 z-10 p-2 bg-white/80 backdrop-blur-sm rounded-full shadow-md hover:bg-white transition-all duration-200 opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0"
+          aria-label="Quick view"
+        >
+          <EyeIcon className="h-5 w-5 text-gray-600 hover:text-kasuwa-primary-600 transition-colors" />
+        </button>
+      )}
 
       {/* Product Image */}
       <div className="relative aspect-square overflow-hidden bg-gray-100">
@@ -122,9 +163,9 @@ export default function ProductCard({
           </div>
         )}
         
-        {!imageError && primaryImage ? (
+        {!imageError && getPrimaryImage() ? (
           <img
-            src={primaryImage.imageUrl}
+            src={getPrimaryImage()}
             alt={product.name}
             className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${
               imageLoading ? 'opacity-0' : 'opacity-100'
@@ -139,7 +180,7 @@ export default function ProductCard({
         )}
 
         {/* Stock Status Overlay */}
-        {!product.trackQuantity || product.quantity === 0 ? (
+        {product.stockQuantity === 0 && !product.inStock ? (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
             <span className="text-white font-semibold text-lg">Out of Stock</span>
           </div>
@@ -161,7 +202,7 @@ export default function ProductCard({
 
         {/* Category */}
         <p className="text-sm text-gray-500 capitalize">
-          {product.category?.name || 'General'}
+          {product.categoryName || product.category?.name || 'General'}
         </p>
 
         {/* Rating */}
@@ -170,7 +211,7 @@ export default function ProductCard({
             {renderStars(product.averageRating || 0)}
           </div>
           <span className="text-sm text-gray-600">
-            ({product.totalReviews || 0})
+            ({product.reviewCount || 0})
           </span>
         </div>
 
@@ -179,46 +220,35 @@ export default function ProductCard({
           <span className="text-lg font-bold text-gray-900">
             {formatPrice(product.price)}
           </span>
-          {product.compareAtPrice && product.compareAtPrice > product.price && (
+          {product.comparePrice && product.comparePrice > product.price && (
             <span className="text-sm text-gray-500 line-through">
-              {formatPrice(product.compareAtPrice)}
+              {formatPrice(product.comparePrice)}
             </span>
           )}
         </div>
 
         {/* Stock Indicator */}
-        {product.trackQuantity && product.quantity > 0 && product.quantity <= 10 && (
+        {product.stockQuantity > 0 && product.stockQuantity <= 10 && (
           <p className="text-sm text-orange-600">
-            Only {product.quantity} left!
+            Only {product.stockQuantity} left!
           </p>
         )}
 
         {/* Add to Cart Button */}
         <button
-          onClick={() => onAddToCart?.(product.id)}
-          disabled={!product.trackQuantity || product.quantity === 0}
+          onClick={handleAddToCartClick}
+          disabled={product.stockQuantity === 0 && !product.inStock}
           className={`w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg font-medium transition-all duration-200 ${
-            !product.trackQuantity || product.quantity === 0
+            product.stockQuantity === 0 && !product.inStock
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
               : 'bg-kasuwa-primary-600 text-white hover:bg-kasuwa-primary-700 active:transform active:scale-95'
           }`}
         >
           <ShoppingCartIcon className="h-4 w-4" />
           <span>
-            {!product.trackQuantity || product.quantity === 0 ? 'Out of Stock' : 'Add to Cart'}
+            {product.stockQuantity === 0 && !product.inStock ? 'Out of Stock' : 'Add to Cart'}
           </span>
         </button>
-
-        {/* Cultural Badge */}
-        {Array.isArray(product.tags) && product.tags.some(tag => 
-          ['traditional', 'handmade', 'cultural', 'arewa', 'northern'].includes(tag.toLowerCase())
-        ) && (
-          <div className="flex items-center justify-center">
-            <span className="inline-flex items-center px-2 py-1 bg-kasuwa-accent-100 text-kasuwa-accent-800 text-xs font-medium rounded-full">
-              🌟 Authentic Arewa
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

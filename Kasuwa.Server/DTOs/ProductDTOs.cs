@@ -133,11 +133,12 @@ namespace Kasuwa.Server.DTOs
         public string SKU { get; set; } = string.Empty;
         public bool IsActive { get; set; }
         public int StockQuantity { get; set; }
+        public bool ContinueSellingWhenOutOfStock { get; set; }
         public string CategoryName { get; set; } = string.Empty;
         public string? PrimaryImageUrl { get; set; }
         public double AverageRating { get; set; }
         public int ReviewCount { get; set; }
-        public bool InStock => StockQuantity > 0;
+        public bool InStock => StockQuantity > 0 || ContinueSellingWhenOutOfStock;
         public DateTime CreatedDate { get; set; }
     }
 

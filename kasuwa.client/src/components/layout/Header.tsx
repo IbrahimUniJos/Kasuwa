@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   MagnifyingGlassIcon, 
   ShoppingCartIcon, 
   HeartIcon, 
   UserIcon,
   Bars3Icon,
-  XMarkIcon 
+  XMarkIcon,
+  ChevronDownIcon,
+  ArrowRightOnRectangleIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid, ShoppingCartIcon as CartSolid } from '@heroicons/react/24/solid';
 
@@ -19,6 +21,7 @@ interface HeaderProps {
   onCartClick?: () => void;
   onWishlistClick?: () => void;
   onAuthClick?: () => void;
+  onLogout?: () => void;
 }
 
 export default function Header({ 
@@ -29,16 +32,29 @@ export default function Header({
   onSearch,
   onCartClick,
   onWishlistClick,
-  onAuthClick
+  onAuthClick,
+  onLogout
 }: HeaderProps) {
+  const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (onSearch && searchQuery.trim()) {
-      onSearch(searchQuery.trim());
+    if (searchQuery.trim()) {
+      // Navigate to products page with search query
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setIsMenuOpen(false); // Close mobile menu if open
+      
+      // Also call the onSearch callback if provided
+      onSearch?.(searchQuery.trim());
     }
+  };
+
+  const handleLogout = () => {
+    setIsUserMenuOpen(false);
+    onLogout?.();
   };
 
   const navigationLinks = [
@@ -108,7 +124,10 @@ export default function Header({
           {/* Action Buttons */}
           <div className="flex items-center space-x-4">
             {/* Search button for mobile */}
-            <button className="md:hidden p-2 text-gray-600 hover:text-kasuwa-primary-600">
+            <button 
+              className="md:hidden p-2 text-gray-600 hover:text-kasuwa-primary-600"
+              onClick={() => navigate('/products')}
+            >
               <MagnifyingGlassIcon className="h-6 w-6" />
             </button>
 
@@ -149,15 +168,64 @@ export default function Header({
             {/* User Account */}
             <div className="relative">
               {isAuthenticated && user ? (
-                <button
-                  onClick={onAuthClick}
-                  className="flex items-center space-x-2 p-2 text-gray-600 hover:text-kasuwa-primary-600 transition-colors"
-                >
-                  <UserIcon className="h-6 w-6" />
-                  <span className="hidden sm:inline text-sm font-medium">
-                    {user.firstName}
-                  </span>
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center space-x-2 p-2 text-gray-600 hover:text-kasuwa-primary-600 transition-colors"
+                  >
+                    <div className="w-8 h-8 bg-kasuwa-primary-100 rounded-full flex items-center justify-center">
+                      <span className="text-kasuwa-primary-600 font-medium text-sm">
+                        {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+                      </span>
+                    </div>
+                    <span className="hidden sm:inline text-sm font-medium">
+                      {user.firstName}
+                    </span>
+                    <ChevronDownIcon className="h-4 w-4" />
+                  </button>
+
+                  {/* User Dropdown Menu */}
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                      <Link
+                        to="/profile"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        My Profile
+                      </Link>
+                      <Link
+                        to="/orders"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        My Orders
+                      </Link>
+                      <Link
+                        to="/wishlist"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        Wishlist
+                      </Link>
+                      <Link
+                        to="/settings"
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => setIsUserMenuOpen(false)}
+                      >
+                        Settings
+                      </Link>
+                      <div className="border-t border-gray-100 my-1"></div>
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                      >
+                        <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2" />
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <button
                   onClick={onAuthClick}
@@ -246,6 +314,47 @@ export default function Header({
                   {link.name}
                 </Link>
               ))}
+              
+              {/* User Menu Items for Mobile */}
+              {isAuthenticated && user && (
+                <div className="border-t border-gray-200 pt-2 mt-2">
+                  <div className="px-3 py-2 text-sm font-medium text-gray-900">
+                    Welcome, {user.firstName}!
+                  </div>
+                  <Link
+                    to="/profile"
+                    className="block px-3 py-2 text-gray-700 hover:text-kasuwa-primary-600 hover:bg-kasuwa-primary-50 rounded-lg transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    My Profile
+                  </Link>
+                  <Link
+                    to="/orders"
+                    className="block px-3 py-2 text-gray-700 hover:text-kasuwa-primary-600 hover:bg-kasuwa-primary-50 rounded-lg transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    My Orders
+                  </Link>
+                  <Link
+                    to="/wishlist"
+                    className="block px-3 py-2 text-gray-700 hover:text-kasuwa-primary-600 hover:bg-kasuwa-primary-50 rounded-lg transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Wishlist
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleLogout();
+                    }}
+                    className="flex items-center w-full px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
+              
               <div className="border-t border-gray-200 pt-2 mt-2">
                 <Link
                   to="/become-vendor"
@@ -265,6 +374,14 @@ export default function Header({
             </nav>
           </div>
         </div>
+      )}
+
+      {/* Click outside to close user menu */}
+      {isUserMenuOpen && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setIsUserMenuOpen(false)}
+        />
       )}
     </header>
   );

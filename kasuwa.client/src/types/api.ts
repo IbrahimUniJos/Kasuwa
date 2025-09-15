@@ -1,6 +1,6 @@
 // API DTOs matching the backend C# DTOs
 
-// Authentication DTOs
+// Authentication DTOs matching AuthController.cs
 export interface LoginDto {
   email: string;
   password: string;
@@ -13,51 +13,99 @@ export interface RegisterDto {
   email: string;
   password: string;
   confirmPassword: string;
-  phoneNumber?: string;
+  userType: UserType;
+  // Vendor-specific fields (optional)
+  businessName?: string;
+  businessDescription?: string;
+  businessAddress?: string;
+  businessPhone?: string;
+  // Customer-specific fields (optional)
+  dateOfBirth?: string; // ISO date string
+  preferredLanguage?: string;
 }
 
 export interface AuthResponseDto {
-  token: string;
-  refreshToken: string;
-  expiresAt: string; // ISO date string
-  user: UserDto;
+  success: boolean;
+  message: string;
+  token?: string;
+  refreshToken?: string;
+  tokenExpiration?: string; // ISO date string
+  user?: UserDto;
 }
 
-export interface RefreshTokenDto {
+export interface RefreshTokenRequestDto {
+  accessToken: string;
   refreshToken: string;
 }
 
 export interface UserDto {
   id: string;
+  email: string;
   firstName: string;
   lastName: string;
-  email: string;
-  phoneNumber?: string;
-  isEmailConfirmed: boolean;
-  profilePictureUrl?: string;
-  createdAt: string; // ISO date string
+  userType: UserType;
+  isActive: boolean;
+  isVendorApproved: boolean;
+  businessName?: string;
+  profileImageUrl?: string;
+  dateCreated: string; // ISO date string
+  lastLogin?: string; // ISO date string
+  roles: string[];
 }
+
+export interface ChangePasswordRequestDto {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface ForgotPasswordRequestDto {
+  email: string;
+}
+
+export interface ResetPasswordRequestDto {
+  email: string;
+  token: string;
+  password: string;
+  confirmPassword: string;
+}
+
+// User Type enum matching backend
+export const UserType = {
+  Customer: 1,
+  Vendor: 2,
+  Administrator: 3
+} as const;
+
+export type UserType = typeof UserType[keyof typeof UserType];
 
 // Product DTOs
 export interface ProductDto {
   id: number;
+  vendorId: string;
+  vendorName: string;
   name: string;
   description: string;
-  shortDescription?: string;
-  sku: string;
   price: number;
-  compareAtPrice?: number;
-  categoryId: number;
-  vendorId: string;
+  stockQuantity: number;
+  sku: string;
   isActive: boolean;
-  isFeatured: boolean;
-  averageRating: number;
-  totalReviews: number;
-  createdAt: string; // ISO date string
-  category: CategoryDto;
-  vendor: VendorDto;
+  createdDate: string; // ISO date string
+  updatedDate: string; // ISO date string
+  categoryId: number;
+  categoryName: string;
+  comparePrice?: number;
+  weight: number;
+  weightUnit?: string;
+  requiresShipping: boolean;
+  trackQuantity: boolean;
+  continueSellingWhenOutOfStock: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
   images: ProductImageDto[];
   variants: ProductVariantDto[];
+  averageRating: number;
+  reviewCount: number;
 }
 
 export interface ProductListDto {
@@ -68,6 +116,7 @@ export interface ProductListDto {
   sku: string;
   isActive: boolean;
   stockQuantity: number;
+  continueSellingWhenOutOfStock: boolean;
   categoryName: string;
   primaryImageUrl?: string;
   averageRating: number;
@@ -88,9 +137,9 @@ export interface ProductVariantDto {
   id: number;
   name: string;
   value: string;
-  price?: number;
+  priceAdjustment: number;
+  stockQuantity: number;
   sku?: string;
-  quantity?: number;
   isActive: boolean;
 }
 
@@ -101,8 +150,27 @@ export interface CategoryDto {
   slug: string;
   isActive: boolean;
   displayOrder: number;
+  sortOrder: number; // Add sortOrder property
   parentCategoryId?: number;
   subCategories: CategoryDto[];
+  productCount?: number; // Add productCount property
+}
+
+// Create and Update DTOs for categories
+export interface CreateCategoryDto {
+  name: string;
+  description?: string;
+  parentCategoryId?: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface UpdateCategoryDto {
+  name: string;
+  description?: string;
+  parentCategoryId?: number;
+  isActive: boolean;
+  sortOrder: number;
 }
 
 export interface VendorDto {
@@ -122,25 +190,48 @@ export interface VendorDto {
 export interface CreateProductDto {
   name: string;
   description: string;
-  shortDescription?: string;
-  sku: string;
   price: number;
-  compareAtPrice?: number;
-  costPrice?: number;
-  trackQuantity: boolean;
-  quantity: number;
+  stockQuantity: number;
+  sku: string;
   categoryId: number;
-  weight?: number;
-  dimensions?: string;
-  tags?: string;
-  seoTitle?: string;
-  seoDescription?: string;
+  comparePrice?: number;
+  weight: number;
+  weightUnit?: string;
+  requiresShipping: boolean;
+  trackQuantity: boolean;
+  continueSellingWhenOutOfStock: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  images: Array<{
+    imageUrl: string;
+    altText?: string;
+    sortOrder: number;
+    isPrimary: boolean;
+  }>;
+  variants: Array<{
+    name: string;
+    value: string;
+    priceAdjustment: number;
+    stockQuantity: number;
+    sku?: string;
+  }>;
 }
 
-export interface UpdateProductDto extends Partial<CreateProductDto> {
-  id: number;
-  isActive?: boolean;
-  isFeatured?: boolean;
+export interface UpdateProductDto {
+  name: string;
+  description: string;
+  price: number;
+  stockQuantity: number;
+  categoryId: number;
+  comparePrice?: number;
+  weight: number;
+  weightUnit?: string;
+  requiresShipping: boolean;
+  trackQuantity: boolean;
+  continueSellingWhenOutOfStock: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  isActive: boolean;
 }
 
 // Cart DTOs
@@ -321,18 +412,17 @@ export interface ProcessPaymentDto {
 
 // Query parameters for API endpoints
 export interface ProductQueryParams {
-  page?: number;
-  pageSize?: number;
-  categoryId?: number;
-  vendorId?: string;
   searchTerm?: string;
+  categoryId?: number;
   minPrice?: number;
   maxPrice?: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-  isActive?: boolean;
-  isFeatured?: boolean;
-  tags?: string;
+  inStockOnly?: boolean;
+  vendorId?: string;
+  minRating?: number;
+  sortBy?: string; // name, price, rating, date
+  sortDirection?: 'asc' | 'desc';
+  pageNumber?: number;
+  pageSize?: number;
 }
 
 export interface OrderQueryParams {

@@ -1,18 +1,18 @@
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 
 // Layout Components
 import Header from './components/layout/Header';
-import Hero from './components/layout/Hero';
 import Footer from './components/layout/Footer';
-
-// Product Components
-import FeaturedProducts from './components/products/FeaturedProducts';
-import CategorySection from './components/products/CategorySection';
 
 // UI Components
 import AuthModal from './components/ui/AuthModal';
 import CartDrawer from './components/ui/CartDrawer';
+
+// Page Components
+import { HomePage } from './components';
+import ProductsPage from './pages/ProductsPage';
+import ProductDetailPage from './pages/ProductDetailPage';
 
 // Services and Types
 import { 
@@ -23,7 +23,7 @@ import {
   wishlistService 
 } from './services';
 import type { User, Product, Cart, ProductCategory } from './types';
-import type { LoginDto, RegisterDto } from './types/api';
+import type { LoginDto, RegisterDto, UserType } from './types/api';
 
 import './App.css';
 
@@ -146,7 +146,23 @@ const mapProductListDtoToProduct = (productListDto: any): Product => ({
   totalReviews: productListDto.reviewCount
 });
 
-function App() {
+// Helper function to map UserDto to User
+const mapUserDtoToUser = (userDto: any): User => ({
+  id: userDto.id,
+  firstName: userDto.firstName,
+  lastName: userDto.lastName,
+  email: userDto.email,
+  phoneNumber: userDto.phoneNumber,
+  isEmailConfirmed: userDto.isEmailConfirmed || false,
+  profilePictureUrl: userDto.profileImageUrl,
+  addresses: [], // Will be loaded separately if needed
+  createdAt: new Date(userDto.dateCreated),
+  updatedAt: new Date(userDto.dateCreated)
+});
+
+function AppContent() {
+  const navigate = useNavigate();
+  
   // State Management
   const [user, setUser] = useState<User | null>(null);
   const [cart, setCart] = useState<Cart | null>(null);
@@ -158,11 +174,14 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showCartDrawer, setShowCartDrawer] = useState(false);
   const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  const [authModalUserType, setAuthModalUserType] = useState<UserType>(1); // Default to Customer
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load initial data
+  // Initialize authentication service on app startup
   useEffect(() => {
+    authService.initialize();
+    authService.setupTokenRefresh();
     loadInitialData();
   }, []);
 
@@ -195,23 +214,10 @@ function App() {
       }
 
       // Check if user is already authenticated
-      const token = localStorage.getItem('kasuwa_auth_token');
-      if (token) {
+      if (authService.isAuthenticated()) {
         try {
           const currentUser = await authService.getCurrentUser();
-          // Map UserDto to User interface
-          const mappedUser: User = {
-            id: currentUser.id,
-            firstName: currentUser.firstName,
-            lastName: currentUser.lastName,
-            email: currentUser.email,
-            phoneNumber: currentUser.phoneNumber,
-            isEmailConfirmed: currentUser.isEmailConfirmed,
-            profilePictureUrl: currentUser.profilePictureUrl,
-            addresses: [], // Will be loaded separately if needed
-            createdAt: new Date(currentUser.createdAt),
-            updatedAt: new Date(currentUser.createdAt)
-          };
+          const mappedUser = mapUserDtoToUser(currentUser);
           setUser(mappedUser);
 
           // Load user's cart and wishlist
@@ -221,8 +227,8 @@ function App() {
           ]);
         } catch (authError) {
           console.error('Authentication check failed:', authError);
-          // Clear invalid token
-          localStorage.removeItem('kasuwa_auth_token');
+          // Clear invalid tokens
+          await authService.logout();
         }
       }
     } catch (error) {
@@ -281,28 +287,19 @@ function App() {
     try {
       const authResponse = await authService.login(credentials);
       
-      // Map UserDto to User interface
-      const mappedUser: User = {
-        id: authResponse.user.id,
-        firstName: authResponse.user.firstName,
-        lastName: authResponse.user.lastName,
-        email: authResponse.user.email,
-        phoneNumber: authResponse.user.phoneNumber,
-        isEmailConfirmed: authResponse.user.isEmailConfirmed,
-        profilePictureUrl: authResponse.user.profilePictureUrl,
-        addresses: [], // Will be loaded separately if needed
-        createdAt: new Date(authResponse.user.createdAt),
-        updatedAt: new Date(authResponse.user.createdAt)
-      };
-      
-      setUser(mappedUser);
-      setShowAuthModal(false);
-      
-      // Load user's cart and wishlist after successful login
-      await Promise.allSettled([
-        loadUserCart(),
-        loadUserWishlist()
-      ]);
+      if (authResponse.success && authResponse.user) {
+        const mappedUser = mapUserDtoToUser(authResponse.user);
+        setUser(mappedUser);
+        setShowAuthModal(false);
+        
+        // Load user's cart and wishlist after successful login
+        await Promise.allSettled([
+          loadUserCart(),
+          loadUserWishlist()
+        ]);
+      } else {
+        throw new Error(authResponse.message || 'Login failed');
+      }
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -313,31 +310,37 @@ function App() {
     try {
       const authResponse = await authService.register(userData);
       
-      // Map UserDto to User interface
-      const mappedUser: User = {
-        id: authResponse.user.id,
-        firstName: authResponse.user.firstName,
-        lastName: authResponse.user.lastName,
-        email: authResponse.user.email,
-        phoneNumber: authResponse.user.phoneNumber,
-        isEmailConfirmed: authResponse.user.isEmailConfirmed,
-        profilePictureUrl: authResponse.user.profilePictureUrl,
-        addresses: [], // Will be loaded separately if needed
-        createdAt: new Date(authResponse.user.createdAt),
-        updatedAt: new Date(authResponse.user.createdAt)
-      };
-      
-      setUser(mappedUser);
-      setShowAuthModal(false);
-      
-      // Initialize cart and wishlist for new user
-      await Promise.allSettled([
-        loadUserCart(),
-        loadUserWishlist()
-      ]);
+      if (authResponse.success && authResponse.user) {
+        const mappedUser = mapUserDtoToUser(authResponse.user);
+        setUser(mappedUser);
+        setShowAuthModal(false);
+        
+        // Initialize cart and wishlist for new user
+        await Promise.allSettled([
+          loadUserCart(),
+          loadUserWishlist()
+        ]);
+      } else {
+        throw new Error(authResponse.message || 'Registration failed');
+      }
     } catch (error) {
       console.error('Registration failed:', error);
       throw error;
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      setUser(null);
+      setCart(null);
+      setWishlistProductIds(new Set());
+    } catch (error) {
+      console.error('Logout failed:', error);
+      // Clear local state anyway
+      setUser(null);
+      setCart(null);
+      setWishlistProductIds(new Set());
     }
   };
 
@@ -495,8 +498,10 @@ function App() {
   const handleBecomeVendor = () => {
     if (!user) {
       setAuthModalTab('register');
+      setAuthModalUserType(2); // UserType.Vendor
       setShowAuthModal(true);
     } else {
+      // Navigate to vendor registration/dashboard
       console.log('Navigate to vendor registration');
     }
   };
@@ -515,7 +520,15 @@ function App() {
   };
 
   const handleSearch = (query: string) => {
-    console.log('Search for:', query);
+    if (query.trim()) {
+      navigate(`/products?search=${encodeURIComponent(query.trim())}`);
+    }
+  };
+
+  const handleAuthClick = () => {
+    setAuthModalTab('login');
+    setAuthModalUserType(1); // Default to Customer
+    setShowAuthModal(true);
   };
 
   if (loading) {
@@ -556,7 +569,6 @@ function App() {
   }
 
   return (
-    <Router>
       <div className="min-h-screen bg-white">
         {/* Header */}
         <Header
@@ -565,79 +577,16 @@ function App() {
           isAuthenticated={!!user}
           onSearch={handleSearch}
           onCartClick={() => setShowCartDrawer(true)}
-          onAuthClick={() => {
-            setAuthModalTab('login');
-            setShowAuthModal(true);
-          }}
+          onAuthClick={handleAuthClick}
+          onLogout={handleLogout}
         />
 
         {/* Main Content */}
         <main>
           <Routes>
-            <Route path="/" element={
-              <>
-                {/* Hero Section */}
-                <Hero
-                  onExploreProducts={handleExploreProducts}
-                  onBecomeVendor={handleBecomeVendor}
-                />
-
-                {/* Featured Products */}
-                <FeaturedProducts
-                  products={products}
-                  onAddToCart={handleAddToCart}
-                  onToggleWishlist={handleToggleWishlist}
-                  onQuickView={handleQuickView}
-                  wishlistProductIds={wishlistProductIds}
-                />
-
-                {/* Categories Section */}
-                <div id="categories">
-                  <CategorySection
-                    categories={categories}
-                    onCategoryClick={handleCategoryClick}
-                  />
-                </div>
-
-                {/* Trust and Support Section */}
-                <section className="py-16 bg-gradient-to-br from-kasuwa-accent-50 to-kasuwa-primary-50">
-                  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-                    <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-8">
-                      Why Choose Kasuwa?
-                    </h2>
-                    <div className="grid md:grid-cols-3 gap-8">
-                      <div className="bg-white rounded-2xl p-8 shadow-lg">
-                        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <span className="text-2xl">✅</span>
-                        </div>
-                        <h3 className="text-xl font-semibold mb-4">Verified Vendors</h3>
-                        <p className="text-gray-600">
-                          All our vendors go through a thorough verification process to ensure quality and authenticity.
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-2xl p-8 shadow-lg">
-                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <span className="text-2xl">🛡️</span>
-                        </div>
-                        <h3 className="text-xl font-semibold mb-4">Buyer Protection</h3>
-                        <p className="text-gray-600">
-                          Shop with confidence knowing your purchases are protected with our buyer guarantee.
-                        </p>
-                      </div>
-                      <div className="bg-white rounded-2xl p-8 shadow-lg">
-                        <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <span className="text-2xl">🚚</span>
-                        </div>
-                        <h3 className="text-xl font-semibold mb-4">Fast Delivery</h3>
-                        <p className="text-gray-600">
-                          Free delivery within Kano and express shipping to major cities across Northern Nigeria.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              </>
-            } />
+            <Route path="/" element={<HomePage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/products/:id" element={<ProductDetailPage />} />
           </Routes>
         </main>
 
@@ -651,6 +600,7 @@ function App() {
           onLogin={handleLogin}
           onRegister={handleRegister}
           defaultTab={authModalTab}
+          defaultUserType={authModalUserType}
         />
 
         <CartDrawer
@@ -662,6 +612,13 @@ function App() {
           onCheckout={handleCheckout}
         />
       </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }
