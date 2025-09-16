@@ -135,9 +135,9 @@ export default function Header({
                     Sign in
                   </button>
                   <span className="text-gray-400">|</span>
-                  <button onClick={onAuthClick} className="text-gray-600 hover:text-gray-800">
+                  <Link to="/register" className="text-gray-600 hover:text-gray-800">
                     Register
-                  </button>
+                  </Link>
                 </div>
               )}
             </div>
@@ -459,16 +459,23 @@ export default function Header({
                   </button>
                 </div>
               ) : (
-                <div className="border-t border-gray-200 pt-2 mt-2">
+                <div className="border-t border-gray-200 pt-2 mt-2 space-y-2">
                   <button
                     onClick={() => {
                       setIsMenuOpen(false);
                       onAuthClick?.();
                     }}
-                    className="w-full px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium"
+                    className="w-full px-3 py-2 border border-orange-500 text-orange-500 rounded-lg hover:bg-orange-50 font-medium"
                   >
-                    Sign In / Register
+                    Sign In
                   </button>
+                  <Link
+                    to="/register"
+                    className="block w-full px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-medium text-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Register
+                  </Link>
                 </div>
               )}
               

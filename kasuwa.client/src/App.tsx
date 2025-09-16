@@ -14,6 +14,9 @@ import { HomePage } from './components';
 import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CategoriesPage from './pages/CategoriesPage';
+import ProfilePage from './pages/ProfilePage';
+import OrdersPage from './pages/OrdersPage';
+import RegistrationPage from './pages/RegistrationPage';
 
 // Services and Types
 import { 
@@ -165,7 +168,7 @@ function AppContent() {
   const navigate = useNavigate();
   
   // State Management
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null); // Change to any to handle UserDto from backend
   const [cart, setCart] = useState<Cart | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
@@ -589,6 +592,34 @@ function AppContent() {
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
+            <Route 
+              path="/profile" 
+              element={
+                <ProfilePage 
+                  user={user || undefined} 
+                  onUpdateUser={(updatedUser) => {
+                    // Update user state when profile is updated
+                     setUser((prev: any) => prev ? { ...prev, ...updatedUser } : null);
+                  }} 
+                />
+              } 
+            />
+            <Route 
+              path="/orders" 
+              element={
+                <OrdersPage 
+                  user={user || undefined}
+                />
+              } 
+            />
+            <Route 
+              path="/register" 
+              element={
+                <RegistrationPage 
+                  onRegister={handleRegister} 
+                />
+              } 
+            />
           </Routes>
         </main>
 
