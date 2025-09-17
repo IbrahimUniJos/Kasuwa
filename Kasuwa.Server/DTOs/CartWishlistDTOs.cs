@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Kasuwa.Server.Models;
 
 namespace Kasuwa.Server.DTOs
 {
@@ -7,11 +8,16 @@ namespace Kasuwa.Server.DTOs
     {
         public int Id { get; set; }
         public string UserId { get; set; } = string.Empty;
-        public DateTime CreatedDate { get; set; }
-        public DateTime UpdatedDate { get; set; }
-        public List<CartItemDto> CartItems { get; set; } = new List<CartItemDto>();
-        public decimal TotalAmount => CartItems.Sum(item => item.TotalPrice);
-        public int TotalItems => CartItems.Sum(item => item.Quantity);
+        public DateTime CreatedAt { get; set; } // Frontend expects CreatedAt
+        public DateTime UpdatedAt { get; set; } // Frontend expects UpdatedAt
+        public List<CartItemDto> Items { get; set; } = new List<CartItemDto>(); // Frontend expects Items
+        public decimal TotalAmount => Items.Sum(item => item.TotalPrice);
+        public int TotalItems => Items.Sum(item => item.Quantity);
+
+        // Legacy properties for backward compatibility
+        public DateTime CreatedDate => CreatedAt;
+        public DateTime UpdatedDate => UpdatedAt;
+        public List<CartItemDto> CartItems => Items;
     }
 
     public class CartItemDto
@@ -31,8 +37,19 @@ namespace Kasuwa.Server.DTOs
         public decimal TotalPrice => UnitPrice * Quantity;
         public bool IsInStock { get; set; }
         public int AvailableStock { get; set; }
-        public DateTime CreatedDate { get; set; }
-        public DateTime UpdatedDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+
+        // Legacy properties for backward compatibility
+        public DateTime CreatedDate => CreatedAt;
+        public DateTime UpdatedDate => UpdatedAt;
+
+        // For frontend compatibility - add the full product object
+        public ProductDto? Product { get; set; }
+
+        // Frontend expects productVariant as a string
+        public string? ProductVariant => !string.IsNullOrEmpty(ProductVariantValue) ? 
+            $"{ProductVariantName}: {ProductVariantValue}" : null;
     }
 
     public class AddToCartDto
@@ -45,6 +62,9 @@ namespace Kasuwa.Server.DTOs
         public int Quantity { get; set; }
 
         public int? ProductVariantId { get; set; }
+
+        // Frontend compatibility
+        public string? ProductVariant { get; set; }
     }
 
     public class UpdateCartItemDto
@@ -54,6 +74,9 @@ namespace Kasuwa.Server.DTOs
         public int Quantity { get; set; }
 
         public int? ProductVariantId { get; set; }
+
+        // For API compatibility - frontend sends cartItemId separately
+        public int CartItemId { get; set; }
     }
 
     public class CartSummaryDto
@@ -72,10 +95,15 @@ namespace Kasuwa.Server.DTOs
     {
         public int Id { get; set; }
         public string UserId { get; set; } = string.Empty;
-        public DateTime CreatedDate { get; set; }
-        public DateTime UpdatedDate { get; set; }
-        public List<WishlistItemDto> WishlistItems { get; set; } = new List<WishlistItemDto>();
-        public int TotalItems => WishlistItems.Count;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public List<WishlistItemDto> Items { get; set; } = new List<WishlistItemDto>();
+        public int TotalItems => Items.Count;
+
+        // Legacy properties for backward compatibility - make them settable
+        public DateTime CreatedDate { get => CreatedAt; set => CreatedAt = value; }
+        public DateTime UpdatedDate { get => UpdatedAt; set => UpdatedAt = value; }
+        public List<WishlistItemDto> WishlistItems { get => Items; set => Items = value; }
     }
 
     public class WishlistItemDto
@@ -93,9 +121,15 @@ namespace Kasuwa.Server.DTOs
         public string VendorName { get; set; } = string.Empty;
         public double AverageRating { get; set; }
         public int ReviewCount { get; set; }
-        public DateTime CreatedDate { get; set; }
+        public DateTime CreatedAt { get; set; }
         public bool HasDiscount => ComparePrice.HasValue && ComparePrice > ProductPrice;
         public decimal? DiscountPercentage => HasDiscount ? Math.Round(((ComparePrice!.Value - ProductPrice) / ComparePrice.Value) * 100, 1) : null;
+
+        // Legacy property - make it settable
+        public DateTime CreatedDate { get => CreatedAt; set => CreatedAt = value; }
+
+        // For frontend compatibility - add the full product object
+        public ProductDto? Product { get; set; }
     }
 
     public class AddToWishlistDto

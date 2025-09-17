@@ -9,7 +9,7 @@ namespace Kasuwa.Server.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Policy = "RequireCustomerRole")]
+    [Authorize] // Remove the specific policy requirement to allow all authenticated users
     public class CartController : ControllerBase
     {
         private readonly ICartService _cartService;
@@ -49,7 +49,7 @@ namespace Kasuwa.Server.Controllers
         /// Add item to cart
         /// </summary>
         [HttpPost("items")]
-        public async Task<ActionResult<CartItemDto>> AddToCart([FromBody] AddToCartDto addToCartDto)
+        public async Task<ActionResult<CartDto>> AddToCart([FromBody] AddToCartDto addToCartDto)
         {
             try
             {
@@ -59,11 +59,14 @@ namespace Kasuwa.Server.Controllers
                     return Unauthorized();
                 }
 
-                var cartItem = await _cartService.AddToCartAsync(userId, addToCartDto);
+                await _cartService.AddToCartAsync(userId, addToCartDto);
+
+                // Return the full updated cart
+                var cart = await _cartService.GetCartAsync(userId);
 
                 _logger.LogInformation("Added product {ProductId} to cart for user {UserId}", addToCartDto.ProductId, userId);
 
-                return Ok(cartItem);
+                return Ok(cart);
             }
             catch (ArgumentException ex)
             {
@@ -80,7 +83,7 @@ namespace Kasuwa.Server.Controllers
         /// Update cart item
         /// </summary>
         [HttpPut("items/{itemId}")]
-        public async Task<ActionResult<CartItemDto>> UpdateCartItem(int itemId, [FromBody] UpdateCartItemDto updateCartItemDto)
+        public async Task<ActionResult<CartDto>> UpdateCartItem(int itemId, [FromBody] UpdateCartItemDto updateCartItemDto)
         {
             try
             {
@@ -96,9 +99,12 @@ namespace Kasuwa.Server.Controllers
                     return NotFound("Cart item not found");
                 }
 
+                // Return the full updated cart
+                var cart = await _cartService.GetCartAsync(userId);
+
                 _logger.LogInformation("Updated cart item {ItemId} for user {UserId}", itemId, userId);
 
-                return Ok(cartItem);
+                return Ok(cart);
             }
             catch (ArgumentException ex)
             {
@@ -115,7 +121,7 @@ namespace Kasuwa.Server.Controllers
         /// Remove item from cart
         /// </summary>
         [HttpDelete("items/{itemId}")]
-        public async Task<ActionResult> RemoveFromCart(int itemId)
+        public async Task<ActionResult<CartDto>> RemoveFromCart(int itemId)
         {
             try
             {
@@ -131,9 +137,12 @@ namespace Kasuwa.Server.Controllers
                     return NotFound("Cart item not found");
                 }
 
+                // Return the updated cart
+                var cart = await _cartService.GetCartAsync(userId);
+
                 _logger.LogInformation("Removed cart item {ItemId} for user {UserId}", itemId, userId);
 
-                return Ok(new { message = "Item removed from cart" });
+                return Ok(cart);
             }
             catch (Exception ex)
             {

@@ -10,9 +10,11 @@ import {
   MapPinIcon,
   ShieldCheckIcon,
   BellIcon,
-  KeyIcon
+  KeyIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
-import type { UserDto, ChangePasswordRequestDto, AddressDto, CreateAddressDto } from '../types/api';
+import { userService, addressService } from '../services/user';
+import type { UserDto, ChangePasswordRequestDto, AddressDto, CreateAddressDto, UpdateUserDto } from '../types/api';
 
 interface ProfilePageProps {
   user?: UserDto;
@@ -44,7 +46,8 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
   });
 
   // Addresses state
-  const [addresses] = useState<AddressDto[]>([]);
+  const [addresses, setAddresses] = useState<AddressDto[]>([]);
+  const [addressesLoading, setAddressesLoading] = useState(false);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [editingAddress, setEditingAddress] = useState<AddressDto | null>(null);
   const [addressForm, setAddressForm] = useState<CreateAddressDto>({
@@ -86,11 +89,23 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
 
   const loadUserData = async () => {
     try {
-      // Load addresses and other user-specific data
-      // This would call backend APIs to get user addresses, preferences, etc.
-      console.log('Loading user data...');
+      // Load user addresses
+      await loadAddresses();
     } catch (error) {
       console.error('Failed to load user data:', error);
+    }
+  };
+
+  const loadAddresses = async () => {
+    setAddressesLoading(true);
+    try {
+      const userAddresses = await addressService.getAddresses();
+      setAddresses(userAddresses);
+    } catch (error) {
+      console.error('Failed to load addresses:', error);
+      setError('Failed to load addresses');
+    } finally {
+      setAddressesLoading(false);
     }
   };
 
@@ -101,10 +116,13 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
     setSuccess(null);
 
     try {
-      // Call backend API to update profile
-      // const updatedUser = await userService.updateProfile(profileForm);
-      // For now, create updated user from current data and form
-      const updatedUser = { ...user!, ...profileForm };
+      const updateData: UpdateUserDto = {
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        businessName: profileForm.businessName || undefined
+      };
+
+      const updatedUser = await userService.updateProfile(updateData);
       onUpdateUser?.(updatedUser);
       
       setSuccess('Profile updated successfully!');
@@ -129,7 +147,7 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
     setSuccess(null);
 
     try {
-      // await authService.changePassword(passwordForm);
+      await userService.changePassword(passwordForm);
       setSuccess('Password changed successfully!');
       setPasswordForm({
         currentPassword: '',
@@ -151,20 +169,46 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
     try {
       if (editingAddress) {
         // Update existing address
-        console.log('Updating address:', addressForm);
+        await addressService.updateAddress(editingAddress.id, addressForm);
+        setSuccess('Address updated successfully!');
       } else {
         // Create new address
-        console.log('Creating address:', addressForm);
+        await addressService.createAddress(addressForm);
+        setSuccess('Address created successfully!');
       }
       
       setShowAddressForm(false);
       setEditingAddress(null);
       resetAddressForm();
-      setSuccess('Address saved successfully!');
+      await loadAddresses(); // Reload addresses
     } catch (err: any) {
       setError(err.message || 'Failed to save address');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAddress = async (addressId: number) => {
+    if (!confirm('Are you sure you want to delete this address?')) {
+      return;
+    }
+
+    try {
+      await addressService.deleteAddress(addressId);
+      setSuccess('Address deleted successfully!');
+      await loadAddresses(); // Reload addresses
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete address');
+    }
+  };
+
+  const handleSetDefaultAddress = async (addressId: number) => {
+    try {
+      await addressService.setDefaultAddress(addressId);
+      setSuccess('Default address updated!');
+      await loadAddresses(); // Reload addresses
+    } catch (err: any) {
+      setError(err.message || 'Failed to set default address');
     }
   };
 
@@ -265,12 +309,24 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm text-red-700">{error}</p>
+                <button 
+                  onClick={() => setError(null)}
+                  className="mt-2 text-xs text-red-600 hover:text-red-800"
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
             {success && (
               <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm text-green-700">{success}</p>
+                <button 
+                  onClick={() => setSuccess(null)}
+                  className="mt-2 text-xs text-green-600 hover:text-green-800"
+                >
+                  Dismiss
+                </button>
               </div>
             )}
 
@@ -420,7 +476,12 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
                   </button>
                 </div>
 
-                {addresses.length === 0 ? (
+                {addressesLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-kasuwa-primary-600 mx-auto"></div>
+                    <p className="mt-2 text-sm text-gray-500">Loading addresses...</p>
+                  </div>
+                ) : addresses.length === 0 ? (
                   <div className="text-center py-12">
                     <MapPinIcon className="mx-auto h-12 w-12 text-gray-400" />
                     <h3 className="mt-2 text-sm font-medium text-gray-900">No addresses</h3>
@@ -431,9 +492,9 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {addresses.map((address) => (
-                      <div key={address.id} className="border border-gray-200 rounded-lg p-4">
+                      <div key={address.id} className="border border-gray-200 rounded-lg p-4 relative">
                         <div className="flex justify-between items-start">
-                          <div>
+                          <div className="flex-1">
                             <h3 className="font-medium text-gray-900">
                               {address.addressLine1}
                             </h3>
@@ -450,17 +511,41 @@ export default function ProfilePage({ user, onUpdateUser }: ProfilePageProps) {
                               </span>
                             )}
                           </div>
-                          <button
-                            onClick={() => {
-                              setEditingAddress(address);
-                              setAddressForm(address);
-                              setShowAddressForm(true);
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            <PencilIcon className="w-5 h-5" />
-                          </button>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => {
+                                setEditingAddress(address);
+                                setAddressForm({
+                                  addressLine1: address.addressLine1,
+                                  addressLine2: address.addressLine2 || '',
+                                  city: address.city,
+                                  state: address.state,
+                                  postalCode: address.postalCode || '',
+                                  country: address.country,
+                                  isDefault: address.isDefault
+                                });
+                                setShowAddressForm(true);
+                              }}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <PencilIcon className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAddress(address.id)}
+                              className="text-gray-400 hover:text-red-600"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
+                        {!address.isDefault && (
+                          <button
+                            onClick={() => handleSetDefaultAddress(address.id)}
+                            className="mt-3 text-xs text-kasuwa-primary-600 hover:text-kasuwa-primary-800"
+                          >
+                            Set as default
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

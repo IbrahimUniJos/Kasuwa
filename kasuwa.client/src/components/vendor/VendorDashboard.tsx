@@ -1,4 +1,3 @@
-import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
   BuildingStorefrontIcon,
@@ -51,10 +50,10 @@ export default function VendorDashboard() {
                 <div className="bg-amber-100 rounded-lg p-4">
                   <h4 className="font-medium text-amber-800 mb-2">What happens next?</h4>
                   <ul className="text-sm text-amber-700 space-y-1">
-                    <li>• Our team will review your business information within 2-3 business days</li>
-                    <li>• You'll receive an email notification once your account is approved</li>
-                    <li>• After approval, you can start listing and selling your products</li>
-                    <li>• You can still browse and purchase products while waiting</li>
+                    <li>ï¿½ Our team will review your business information within 2-3 business days</li>
+                    <li>ï¿½ You'll receive an email notification once your account is approved</li>
+                    <li>ï¿½ After approval, you can start listing and selling your products</li>
+                    <li>ï¿½ You can still browse and purchase products while waiting</li>
                   </ul>
                 </div>
               </div>

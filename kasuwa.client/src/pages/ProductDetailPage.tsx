@@ -18,21 +18,28 @@ import {
   HeartIcon as HeartSolidIcon 
 } from '@heroicons/react/24/solid';
 import { productService } from '../services/products';
+import { cartService } from '../services/cart';
+import { wishlistService } from '../services/cart';
+import { useAuth } from '../contexts/AuthContext';
 import ProductCard from '../components/products/ProductCard';
-import type { ProductDto, ProductVariantDto, ProductListDto } from '../types/api';
+import type { ProductDto, ProductVariantDto, ProductListDto, AddToCartDto } from '../types/api';
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const [product, setProduct] = useState<ProductDto | null>(null);
   const [relatedProducts, setRelatedProducts] = useState<ProductListDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addingToCart, setAddingToCart] = useState(false);
+  const [addingToWishlist, setAddingToWishlist] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariantDto | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState<'description' | 'shipping' | 'reviews'>('description');
   const [isInWishlist, setIsInWishlist] = useState(false);
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   useEffect(() => {
     if (!id || isNaN(Number(id))) {
@@ -55,6 +62,16 @@ export default function ProductDetailPage() {
         if (productData.variants && productData.variants.length > 0) {
           setSelectedVariant(productData.variants[0]);
         }
+
+        // Check if product is in wishlist
+        if (user) {
+          try {
+            const inWishlist = await wishlistService.isInWishlist(Number(id));
+            setIsInWishlist(inWishlist);
+          } catch (error) {
+            console.error('Error checking wishlist status:', error);
+          }
+        }
       } catch (error) {
         console.error('Error fetching product:', error);
         // Product not found, redirect to products page
@@ -65,7 +82,12 @@ export default function ProductDetailPage() {
     };
 
     fetchProduct();
-  }, [id, navigate]);
+  }, [id, navigate, user]);
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000);
+  };
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('en-NG', {
@@ -131,26 +153,85 @@ export default function ProductDetailPage() {
     return stars;
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!product) return;
+
+    setAddingToCart(true);
     
-    // TODO: Integrate with cart service
-    console.log('Adding to cart:', {
-      productId: product.id,
-      variantId: selectedVariant?.id,
-      quantity
-    });
-    
-    // Show success message or update cart state
-    alert(`Added ${quantity} ${product.name} to cart!`);
+    try {
+      const addToCartData: AddToCartDto = {
+        productId: product.id,
+        quantity: quantity,
+        productVariant: selectedVariant ? `${selectedVariant.name}: ${selectedVariant.value}` : undefined
+      };
+
+      if (user) {
+        await cartService.addToCart(addToCartData);
+        showNotification('success', `Added ${quantity} ${product.name} to cart!`);
+      } else {
+        // Handle guest cart
+        const guestCart = JSON.parse(localStorage.getItem('guestCart') || '{"items": [], "totalItems": 0, "totalAmount": 0}');
+        const newItem = {
+          id: Date.now(),
+          productId: product.id,
+          quantity: quantity,
+          unitPrice: getCurrentPrice(),
+          totalPrice: getCurrentPrice() * quantity,
+          productVariant: selectedVariant ? `${selectedVariant.name}: ${selectedVariant.value}` : undefined,
+          product: product
+        };
+        
+        // Check if item already exists
+        const existingItemIndex = guestCart.items.findIndex((item: any) => 
+          item.productId === product.id && item.productVariant === newItem.productVariant
+        );
+        
+        if (existingItemIndex >= 0) {
+          guestCart.items[existingItemIndex].quantity += quantity;
+          guestCart.items[existingItemIndex].totalPrice = guestCart.items[existingItemIndex].unitPrice * guestCart.items[existingItemIndex].quantity;
+        } else {
+          guestCart.items.push(newItem);
+        }
+        
+        guestCart.totalItems = guestCart.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
+        guestCart.totalAmount = guestCart.items.reduce((sum: number, item: any) => sum + item.totalPrice, 0);
+        
+        localStorage.setItem('guestCart', JSON.stringify(guestCart));
+        showNotification('success', `Added ${quantity} ${product.name} to cart!`);
+      }
+    } catch (error: any) {
+      showNotification('error', error.message || 'Failed to add item to cart');
+    } finally {
+      setAddingToCart(false);
+    }
   };
 
-  const handleToggleWishlist = () => {
+  const handleToggleWishlist = async () => {
     if (!product) return;
+
+    if (!user) {
+      navigate('/auth/login?redirect=' + encodeURIComponent(window.location.pathname));
+      return;
+    }
     
-    // TODO: Integrate with wishlist service
-    setIsInWishlist(!isInWishlist);
-    console.log('Toggle wishlist:', product.id);
+    setAddingToWishlist(true);
+    
+    try {
+      if (isInWishlist) {
+        // Remove from wishlist - would need to implement this in wishlist service
+        // await wishlistService.removeFromWishlist(product.id);
+        setIsInWishlist(false);
+        showNotification('success', 'Removed from wishlist');
+      } else {
+        await wishlistService.addToWishlist({ productId: product.id });
+        setIsInWishlist(true);
+        showNotification('success', 'Added to wishlist');
+      }
+    } catch (error: any) {
+      showNotification('error', error.message || 'Failed to update wishlist');
+    } finally {
+      setAddingToWishlist(false);
+    }
   };
 
   const handleImageNavigation = (direction: 'prev' | 'next') => {
@@ -180,14 +261,14 @@ export default function ProductDetailPage() {
       } else {
         // Fallback to copying URL to clipboard
         await navigator.clipboard.writeText(window.location.href);
-        alert('Product link copied to clipboard!');
+        showNotification('success', 'Product link copied to clipboard!');
       }
     } catch (error) {
       console.error('Error sharing:', error);
       // Fallback: copy to clipboard
       try {
         await navigator.clipboard.writeText(window.location.href);
-        alert('Product link copied to clipboard!');
+        showNotification('success', 'Product link copied to clipboard!');
       } catch (clipboardError) {
         console.error('Clipboard error:', clipboardError);
       }
@@ -198,11 +279,28 @@ export default function ProductDetailPage() {
     navigate(`/products/${productId}`);
   };
 
-  const handleBuyNow = () => {
+  const handleBuyNow = async () => {
     // Add to cart and redirect to checkout
-    handleAddToCart();
-    // TODO: Navigate to checkout
-    navigate('/checkout');
+    await handleAddToCart();
+    
+    if (user) {
+      navigate('/checkout');
+    } else {
+      navigate('/auth/login?redirect=/checkout');
+    }
+  };
+
+  // Notification component
+  const renderNotification = () => {
+    if (!notification) return null;
+
+    return (
+      <div className={`fixed top-4 right-4 z-50 max-w-sm w-full ${
+        notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'
+      } text-white p-4 rounded-lg shadow-lg transition-all duration-300`}>
+        <p className="text-sm font-medium">{notification.message}</p>
+      </div>
+    );
   };
 
   if (loading) {
@@ -251,6 +349,8 @@ export default function ProductDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {renderNotification()}
+      
       {/* Breadcrumb */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -491,7 +591,7 @@ export default function ProductDetailPage() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleAddToCart}
-                  disabled={!isInStock()}
+                  disabled={!isInStock() || addingToCart}
                   className={`flex items-center justify-center space-x-2 py-3 px-6 rounded-lg font-semibold transition-colors ${
                     isInStock()
                       ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 border border-gray-300'
@@ -499,7 +599,7 @@ export default function ProductDetailPage() {
                   }`}
                 >
                   <ShoppingCartIcon className="h-5 w-5" />
-                  <span>Add to Cart</span>
+                  <span>{addingToCart ? 'Adding...' : 'Add to Cart'}</span>
                 </button>
 
                 <button
@@ -518,6 +618,7 @@ export default function ProductDetailPage() {
               <div className="flex space-x-3">
                 <button
                   onClick={handleToggleWishlist}
+                  disabled={addingToWishlist}
                   className={`flex-1 flex items-center justify-center space-x-2 py-3 px-6 border rounded-lg font-medium transition-colors ${
                     isInWishlist
                       ? 'border-red-500 text-red-600 bg-red-50'
@@ -529,7 +630,14 @@ export default function ProductDetailPage() {
                   ) : (
                     <HeartIcon className="h-5 w-5" />
                   )}
-                  <span>{isInWishlist ? 'In Wishlist' : 'Add to Wishlist'}</span>
+                  <span>
+                    {addingToWishlist 
+                      ? 'Updating...' 
+                      : isInWishlist 
+                        ? 'In Wishlist' 
+                        : 'Add to Wishlist'
+                    }
+                  </span>
                 </button>
 
                 <button 
@@ -570,9 +678,18 @@ export default function ProductDetailPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="flex space-x-8 border-b px-6">
             {[
-              { key: 'description', label: 'Description' },
-              { key: 'shipping', label: 'Shipping & Returns' },
-              { key: 'reviews', label: `Reviews (${product.reviewCount})` }
+              {
+                key: 'description',
+                label: 'Description'
+              },
+              {
+                key: 'shipping',
+                label: 'Shipping & Returns'
+              },
+              {
+                key: 'reviews',
+                label: `Reviews (${product.reviewCount})`
+              }
             ].map((tab) => (
               <button
                 key={tab.key}

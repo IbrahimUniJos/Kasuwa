@@ -1,14 +1,15 @@
 // Product service for Kasuwa platform
-import { apiClient, unwrapApiResponse } from './api';
+import { apiClient } from './api';
 import type { 
-  ProductDto, 
+  ProductDto,
   ProductListDto,
-  CategoryDto,
   ProductQueryParams,
+  CategoryDto,
   CreateProductDto,
   UpdateProductDto,
-  PaginatedApiResponse,
-  ApiResponseDto 
+  CreateCategoryDto,
+  UpdateCategoryDto,
+  PaginatedApiResponse
 } from '../types/api';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://localhost:7155/api';

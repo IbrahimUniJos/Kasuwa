@@ -10,6 +10,8 @@ import {
 } from '@heroicons/react/24/outline';
 import ProductCard from '../components/products/ProductCard';
 import { productService, categoryService } from '../services/products';
+import { cartService, wishlistService } from '../services/cart';
+import { useAuth } from '../contexts/AuthContext';
 import type { ProductListDto, CategoryDto, ProductQueryParams } from '../types/api';
 
 interface Filters {
@@ -27,11 +29,15 @@ type ViewMode = 'grid' | 'list';
 export default function ProductsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   
   // State management
   const [products, setProducts] = useState<ProductListDto[]>([]);
   const [categories, setCategories] = useState<CategoryDto[]>([]);
+  const [wishlistIds, setWishlistIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [cartLoading, setCartLoading] = useState(false);
+  const [wishlistLoading, setWishlistLoading] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [tempSearchTerm, setTempSearchTerm] = useState(searchTerm);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -47,19 +53,30 @@ export default function ProductsPage() {
     sortDirection: (searchParams.get('sortDirection') as 'asc' | 'desc') || 'asc'
   });
 
-  // Fetch categories on mount
+  // Fetch categories and wishlist on mount
   useEffect(() => {
-    const fetchCategories = async () => {
+    const fetchInitialData = async () => {
       try {
         const categoriesData = await categoryService.getCategories();
         setCategories(categoriesData);
+
+        // Load wishlist if authenticated
+        if (isAuthenticated) {
+          try {
+            const wishlistData = await wishlistService.getWishlist();
+            const wishlistProductIds = new Set(wishlistData.items.map(item => item.productId));
+            setWishlistIds(wishlistProductIds);
+          } catch (error) {
+            console.error('Error fetching wishlist:', error);
+          }
+        }
       } catch (error) {
         console.error('Error fetching categories:', error);
       }
     };
 
-    fetchCategories();
-  }, []);
+    fetchInitialData();
+  }, [isAuthenticated]);
 
   // Update URL params when filters change
   useEffect(() => {
@@ -147,6 +164,99 @@ export default function ProductsPage() {
   // Product handlers
   const handleProductClick = (productId: number) => {
     navigate(`/products/${productId}`);
+  };
+
+  // Cart handler with immediate UI feedback
+  const handleAddToCart = async (productId: number) => {
+    if (!isAuthenticated) {
+      navigate('/auth/login');
+      return;
+    }
+
+    setCartLoading(true);
+    try {
+      await cartService.addToCart({
+        productId,
+        quantity: 1
+      });
+      
+      // Trigger a custom event that the Header/App can listen to
+      window.dispatchEvent(new CustomEvent('cartUpdated'));
+      
+      // Show success feedback with toast notification
+      showToast('Product added to cart successfully!', 'success');
+      
+    } catch (error) {
+      console.error('Failed to add product to cart:', error);
+      showToast('Failed to add product to cart. Please try again.', 'error');
+    } finally {
+      setCartLoading(false);
+    }
+  };
+
+  // Wishlist handler with loading state
+  const handleToggleWishlist = async (productId: number) => {
+    if (!isAuthenticated) {
+      navigate('/auth/login');
+      return;
+    }
+
+    setWishlistLoading(productId);
+    try {
+      const isInWishlist = wishlistIds.has(productId);
+      
+      if (isInWishlist) {
+        // Remove from wishlist
+        const wishlistData = await wishlistService.getWishlist();
+        const wishlistItem = wishlistData.items.find(item => item.productId === productId);
+        
+        if (wishlistItem) {
+          await wishlistService.removeFromWishlist(wishlistItem.id);
+          setWishlistIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(productId);
+            return newSet;
+          });
+          showToast('Removed from wishlist', 'success');
+        }
+      } else {
+        // Add to wishlist
+        await wishlistService.addToWishlist({ productId });
+        setWishlistIds(prev => new Set([...prev, productId]));
+        showToast('Added to wishlist', 'success');
+      }
+      
+    } catch (error) {
+      console.error('Failed to toggle wishlist:', error);
+      showToast('Failed to update wishlist. Please try again.', 'error');
+    } finally {
+      setWishlistLoading(null);
+    }
+  };
+
+  // Simple toast notification function
+  const showToast = (message: string, type: 'success' | 'error') => {
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.className = `fixed top-4 right-4 z-50 px-6 py-3 rounded-lg text-white font-medium transition-all duration-300 ${
+      type === 'success' ? 'bg-green-500' : 'bg-red-500'
+    }`;
+    toast.textContent = message;
+    
+    document.body.appendChild(toast);
+    
+    // Animate in
+    setTimeout(() => {
+      toast.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Remove after 3 seconds
+    setTimeout(() => {
+      toast.style.transform = 'translateX(100%)';
+      setTimeout(() => {
+        document.body.removeChild(toast);
+      }, 300);
+    }, 3000);
   };
 
   // Get flat categories for dropdown
@@ -412,7 +522,6 @@ export default function ProductsPage() {
           <p className="text-gray-600 mb-6 max-w-md mx-auto">
             {searchTerm 
               ? `We couldn't find any products matching "${searchTerm}". Try adjusting your search or filters.`
-
               : 'No products match your current filter criteria. Try adjusting your filters.'}
           </p>
           <button
@@ -436,6 +545,10 @@ export default function ProductsPage() {
             key={product.id}
             product={product}
             onClick={() => handleProductClick(product.id)}
+            onAddToCart={() => handleAddToCart(product.id)}
+            onToggleWishlist={() => handleToggleWishlist(product.id)}
+            onQuickView={() => handleProductClick(product.id)}
+            isInWishlist={wishlistIds.has(product.id)}
             className={viewMode === 'list' ? 'flex flex-row' : ''}
           />
         ))}

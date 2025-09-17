@@ -4,12 +4,18 @@ export * from './auth';
 export * from './products';
 export * from './cart';
 export * from './orders';
+export * from './user';
+export * from './reviews';
+export * from './vendor';
 
 // Re-export service instances for convenience
 export { authService } from './auth';
 export { productService, categoryService } from './products';
 export { cartService, wishlistService } from './cart';
-export { orderService, reviewService, paymentService } from './orders';
+export { orderService, paymentService } from './orders';
+export { reviewService } from './reviews';
+export { userService, addressService } from './user';
+export { vendorService } from './vendor';
 
 // Setup function to initialize all services
 export function setupServices(): void {

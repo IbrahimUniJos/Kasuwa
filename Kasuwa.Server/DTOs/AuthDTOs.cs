@@ -169,16 +169,74 @@ namespace Kasuwa.Server.DTOs
         public string? BusinessDescription { get; set; }
     }
 
+    // Address DTOs - Extended for comprehensive address management
     public class UserAddressDto
     {
         public int Id { get; set; }
+        public string UserId { get; set; } = string.Empty;
         public string AddressLine1 { get; set; } = string.Empty;
         public string? AddressLine2 { get; set; }
         public string City { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
-        public string PostalCode { get; set; } = string.Empty;
+        public string? PostalCode { get; set; }
         public string Country { get; set; } = string.Empty;
         public bool IsDefault { get; set; }
+        public DateTime CreatedDate { get; set; }
+        public DateTime UpdatedDate { get; set; }
+    }
+
+    public class CreateUserAddressDto
+    {
+        [Required]
+        [MaxLength(200)]
+        public string AddressLine1 { get; set; } = string.Empty;
+
+        [MaxLength(200)]
+        public string? AddressLine2 { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        public string City { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(100)]
+        public string State { get; set; } = string.Empty;
+
+        [MaxLength(20)]
+        public string? PostalCode { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        public string Country { get; set; } = "Nigeria";
+
+        public bool IsDefault { get; set; } = false;
+    }
+
+    public class UpdateUserAddressDto
+    {
+        [Required]
+        [MaxLength(200)]
+        public string AddressLine1 { get; set; } = string.Empty;
+
+        [MaxLength(200)]
+        public string? AddressLine2 { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        public string City { get; set; } = string.Empty;
+
+        [Required]
+        [MaxLength(100)]
+        public string State { get; set; } = string.Empty;
+
+        [MaxLength(20)]
+        public string? PostalCode { get; set; }
+
+        [Required]
+        [MaxLength(100)]
+        public string Country { get; set; } = "Nigeria";
+
+        public bool IsDefault { get; set; } = false;
     }
 
     public class AddUserAddressDto

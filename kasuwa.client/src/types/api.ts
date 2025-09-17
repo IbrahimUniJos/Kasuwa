@@ -59,6 +59,12 @@ export interface ChangePasswordRequestDto {
   confirmPassword: string;
 }
 
+export interface UpdateUserDto {
+  firstName: string;
+  lastName: string;
+  businessName?: string;
+}
+
 export interface ForgotPasswordRequestDto {
   email: string;
 }
@@ -322,6 +328,7 @@ export interface CreateOrderDto {
   notes?: string;
 }
 
+// Address DTOs
 export interface AddressDto {
   id: number;
   addressLine1: string;
@@ -334,6 +341,16 @@ export interface AddressDto {
 }
 
 export interface CreateAddressDto {
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  postalCode?: string;
+  country: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateAddressDto {
   addressLine1: string;
   addressLine2?: string;
   city: string;

@@ -213,11 +213,21 @@ namespace Kasuwa.Server.Controllers
                         TotalRevenue = 0 // TODO: Calculate from orders
                     }).ToList(),
                     
-                    TopSellingProducts = products.OrderByDescending(p => p.ReviewCount).Take(5).Cast<object>().ToList(),
+                    TopSellingProducts = products.OrderByDescending(p => p.ReviewCount).Take(5)
+                        .Select(p => new TopSellingProductDto
+                        {
+                            ProductId = p.Id,
+                            Name = p.Name,
+                            Price = p.Price,
+                            ImageUrl = string.Empty, // TODO: Add image URL support
+                            SalesCount = 0, // TODO: Calculate from orders
+                            Revenue = 0, // TODO: Calculate from orders
+                            StockQuantity = p.StockQuantity
+                        }).ToList(),
                     
-                    RecentActivity = new List<string>
+                    RecentActivity = new List<RecentActivityDto>
                     {
-                        "Product analytics will be available when order tracking is implemented"
+                        new() { Type = "info", Title = "Analytics Setup", Description = "Product analytics will be available when order tracking is implemented", Timestamp = DateTime.UtcNow }
                     }
                 };
                 
@@ -256,13 +266,13 @@ namespace Kasuwa.Server.Controllers
                 var orderSearchDto = new OrderSearchDto
                 {
                     VendorId = userId,
-                    Status = searchDto.Status,
+                    Status = !string.IsNullOrEmpty(searchDto.Status) && Enum.TryParse<OrderStatus>(searchDto.Status, out var status) ? status : null,
                     FromDate = searchDto.FromDate,
                     ToDate = searchDto.ToDate,
                     MinAmount = searchDto.MinAmount,
                     MaxAmount = searchDto.MaxAmount,
-                    SortBy = searchDto.SortBy,
-                    SortDirection = searchDto.SortDirection,
+                    SortBy = searchDto.SortBy ?? "OrderDate",
+                    SortDirection = searchDto.SortDirection ?? "desc",
                     PageNumber = searchDto.PageNumber,
                     PageSize = searchDto.PageSize
                 };
@@ -312,7 +322,7 @@ namespace Kasuwa.Server.Controllers
                     Id = order.Id,
                     OrderNumber = order.OrderNumber,
                     OrderDate = order.OrderDate,
-                    Status = order.Status,
+                    Status = order.Status.ToString(),
                     TotalAmount = order.TotalAmount,
                     ItemCount = order.OrderItems.Sum(oi => oi.Quantity),
                     TrackingNumber = order.TrackingNumber,

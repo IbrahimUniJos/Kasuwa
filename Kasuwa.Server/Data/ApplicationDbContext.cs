@@ -42,6 +42,11 @@ namespace Kasuwa.Server.Data
         public DbSet<UserSuspension> UserSuspensions { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         
+        // Vendor entities
+        public DbSet<VendorProfile> VendorProfiles { get; set; }
+        public DbSet<VendorReview> VendorReviews { get; set; }
+        public DbSet<VendorAnalytics> VendorAnalytics { get; set; }
+        
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
@@ -468,6 +473,85 @@ namespace Kasuwa.Server.Data
                 entity.HasIndex(e => e.ReviewId);
                 entity.HasIndex(e => e.UserId);
                 entity.HasIndex(e => new { e.ReviewId, e.UserId }).IsUnique();
+            });
+            
+            // Configure vendor entities
+            ConfigureVendorEntities(builder);
+        }
+        
+        private void ConfigureVendorEntities(ModelBuilder builder)
+        {
+            // Configure VendorProfile
+            builder.Entity<VendorProfile>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.HasOne(e => e.User)
+                      .WithMany()
+                      .HasForeignKey(e => e.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.Property(e => e.BusinessRegistrationNumber).HasMaxLength(100);
+                entity.Property(e => e.TaxIdentificationNumber).HasMaxLength(100);
+                entity.Property(e => e.StoreThemeColor).HasMaxLength(50);
+                entity.Property(e => e.StoreBannerUrl).HasMaxLength(500);
+                entity.Property(e => e.StoreLogoUrl).HasMaxLength(500);
+                entity.Property(e => e.StoreDescription).HasMaxLength(1000);
+                entity.Property(e => e.FacebookUrl).HasMaxLength(200);
+                entity.Property(e => e.InstagramUrl).HasMaxLength(200);
+                entity.Property(e => e.TwitterUrl).HasMaxLength(200);
+                entity.Property(e => e.WebsiteUrl).HasMaxLength(200);
+                entity.Property(e => e.ReturnPolicyDescription).HasMaxLength(1000);
+                      
+                entity.HasIndex(e => e.UserId).IsUnique();
+                entity.HasIndex(e => e.VerificationStatus);
+                entity.HasIndex(e => e.Rating);
+                entity.HasIndex(e => e.CreatedDate);
+            });
+            
+            // Configure VendorReview
+            builder.Entity<VendorReview>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.HasOne(e => e.Vendor)
+                      .WithMany()
+                      .HasForeignKey(e => e.VendorId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasOne(e => e.Customer)
+                      .WithMany()
+                      .HasForeignKey(e => e.CustomerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+                      
+                entity.HasOne(e => e.Order)
+                      .WithMany()
+                      .HasForeignKey(e => e.OrderId)
+                      .OnDelete(DeleteBehavior.Restrict);
+                      
+                entity.Property(e => e.Comment).HasMaxLength(1000);
+                      
+                entity.HasIndex(e => e.VendorId);
+                entity.HasIndex(e => e.CustomerId);
+                entity.HasIndex(e => e.OrderId);
+                entity.HasIndex(e => e.Rating);
+                entity.HasIndex(e => e.CreatedDate);
+                entity.HasIndex(e => new { e.CustomerId, e.OrderId }).IsUnique();
+            });
+            
+            // Configure VendorAnalytics
+            builder.Entity<VendorAnalytics>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                
+                entity.HasOne(e => e.Vendor)
+                      .WithMany()
+                      .HasForeignKey(e => e.VendorId)
+                      .OnDelete(DeleteBehavior.Cascade);
+                      
+                entity.HasIndex(e => e.VendorId);
+                entity.HasIndex(e => e.Date);
+                entity.HasIndex(e => new { e.VendorId, e.Date }).IsUnique();
             });
         }
         

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 
+// Context Providers
+import { AuthProvider } from './contexts/AuthContext';
+
 // Layout Components
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
@@ -16,7 +19,10 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import CategoriesPage from './pages/CategoriesPage';
 import ProfilePage from './pages/ProfilePage';
 import OrdersPage from './pages/OrdersPage';
+import CartPage from './pages/CartPage';
+import CheckoutPage from './pages/CheckoutPage';
 import RegistrationPage from './pages/RegistrationPage';
+import VendorDashboardPage from './pages/VendorDashboardPage';
 
 // Services and Types
 import { 
@@ -27,7 +33,7 @@ import {
   wishlistService 
 } from './services';
 import type { User, Product, Cart, ProductCategory } from './types';
-import type { LoginDto, RegisterDto, UserType } from './types/api';
+import type { LoginDto, RegisterDto, UserType, CartDto, CartItemDto } from './types/api';
 
 import './App.css';
 
@@ -187,7 +193,23 @@ function AppContent() {
     authService.initialize();
     authService.setupTokenRefresh();
     loadInitialData();
-  }, []);
+  }, []); // Remove user dependency to prevent infinite loop
+
+  // Separate effect to listen for cart updates
+  useEffect(() => {
+    // Listen for cart updates from other components
+    const handleCartUpdate = () => {
+      if (user) {
+        loadUserCart();
+      }
+    };
+
+    window.addEventListener('cartUpdated', handleCartUpdate);
+    
+    return () => {
+      window.removeEventListener('cartUpdated', handleCartUpdate);
+    };
+  }, [user]); // Keep user dependency only for the event listener
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -246,27 +268,7 @@ function AppContent() {
   const loadUserCart = async () => {
     try {
       const cartDto = await cartService.getCart();
-      // Map CartDto to Cart interface
-      const mappedCart: Cart = {
-        id: cartDto.id,
-        userId: cartDto.userId,
-        createdAt: new Date(cartDto.createdAt),
-        updatedAt: new Date(cartDto.createdAt), // Use createdAt as fallback
-        items: cartDto.items?.map(itemDto => ({
-          id: itemDto.id,
-          cartId: cartDto.id, // Map from parent cart
-          productId: itemDto.productId,
-          quantity: itemDto.quantity,
-          unitPrice: itemDto.unitPrice,
-          totalPrice: itemDto.totalPrice,
-          productVariant: itemDto.productVariant,
-          createdAt: new Date(cartDto.createdAt), // Use cart createdAt as fallback
-          product: mapProductDtoToProduct(itemDto.product)
-        })) || [],
-        totalItems: cartDto.totalItems,
-        totalAmount: cartDto.totalAmount
-      };
-      setCart(mappedCart);
+      setCart(mapCartDtoToCart(cartDto));
     } catch (error) {
       console.error('Failed to load cart:', error);
       // Cart failure is not critical for initial load
@@ -301,6 +303,16 @@ function AppContent() {
           loadUserCart(),
           loadUserWishlist()
         ]);
+
+        // Navigate based on user type
+        if (authResponse.user.userType === 2) { // UserType.Vendor
+          navigate('/vendor/dashboard');
+        } else if (authResponse.user.userType === 3) { // UserType.Administrator
+          navigate('/admin/dashboard');
+        } else {
+          // For customers, stay on current page or go to home
+          navigate('/');
+        }
       } else {
         throw new Error(authResponse.message || 'Login failed');
       }
@@ -348,6 +360,79 @@ function AppContent() {
     }
   };
 
+  // Helper function to map CartDto to Cart
+  const mapCartDtoToCart = (cartDto: CartDto): Cart => ({
+    id: cartDto.id,
+    userId: cartDto.userId,
+    createdAt: new Date(cartDto.createdAt),
+    updatedAt: new Date(),
+    totalItems: cartDto.totalItems,
+    totalAmount: cartDto.totalAmount,
+    items: cartDto.items?.map((itemDto: CartItemDto) => ({
+      id: itemDto.id,
+      cartId: cartDto.id,
+      productId: itemDto.productId,
+      quantity: itemDto.quantity,
+      unitPrice: itemDto.unitPrice,
+      totalPrice: itemDto.totalPrice,
+      productVariant: itemDto.productVariant,
+      createdAt: new Date(),
+      product: itemDto.product ? mapProductDtoToProduct(itemDto.product) : {
+        id: 0,
+        vendorId: '',
+        name: 'Unknown Product',
+        description: '',
+        price: 0,
+        stockQuantity: 0,
+        sku: '',
+        isActive: false,
+        createdDate: new Date(),
+        updatedDate: new Date(),
+        categoryId: 0,
+        comparePrice: 0,
+        weight: 0,
+        weightUnit: undefined,
+        requiresShipping: true,
+        trackQuantity: true,
+        continueSellingWhenOutOfStock: false,
+        metaTitle: undefined,
+        metaDescription: undefined,
+        quantity: 0,
+        compareAtPrice: 0,
+        isFeatured: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        seoTitle: undefined,
+        seoDescription: undefined,
+        category: {
+          id: 0,
+          name: '',
+          slug: '',
+          isActive: true,
+          displayOrder: 0,
+          subCategories: []
+        },
+        vendor: {
+          id: '',
+          firstName: '',
+          lastName: '',
+          email: '',
+          phoneNumber: undefined,
+          isEmailConfirmed: true,
+          profilePictureUrl: undefined,
+          addresses: [],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        },
+        images: [],
+        variants: [],
+        reviews: [],
+        averageRating: 0,
+        totalReviews: 0
+      }
+    })) || []
+  });
+
   // Cart Handlers
   const handleAddToCart = async (productId: number) => {
     if (!user) {
@@ -357,33 +442,18 @@ function AppContent() {
     }
 
     try {
-      const updatedCart = await cartService.addToCart({
+      // Add to cart and get the updated cart directly
+      const updatedCartDto = await cartService.addToCart({
         productId,
         quantity: 1
       });
       
-      // Map the updated cart
-      const mappedCart: Cart = {
-        id: updatedCart.id,
-        userId: updatedCart.userId,
-        createdAt: new Date(updatedCart.createdAt),
-        updatedAt: new Date(updatedCart.createdAt),
-        items: updatedCart.items?.map(itemDto => ({
-          id: itemDto.id,
-          cartId: updatedCart.id,
-          productId: itemDto.productId,
-          quantity: itemDto.quantity,
-          unitPrice: itemDto.unitPrice,
-          totalPrice: itemDto.totalPrice,
-          productVariant: itemDto.productVariant,
-          createdAt: new Date(updatedCart.createdAt),
-          product: mapProductDtoToProduct(itemDto.product)
-        })) || [],
-        totalItems: updatedCart.totalItems,
-        totalAmount: updatedCart.totalAmount
-      };
+      // Map and update state immediately
+      setCart(mapCartDtoToCart(updatedCartDto));
       
-      setCart(mappedCart);
+      // Show success feedback (optional)
+      console.log('Item added to cart successfully');
+      
     } catch (error) {
       console.error('Failed to add item to cart:', error);
       // TODO: Show error toast to user
@@ -394,33 +464,14 @@ function AppContent() {
     if (!user) return;
 
     try {
-      const updatedCart = await cartService.updateCartItem({
+      const updatedCartDto = await cartService.updateCartItem({
         cartItemId: itemId,
         quantity
       });
       
-      // Map the updated cart (same as above)
-      const mappedCart: Cart = {
-        id: updatedCart.id,
-        userId: updatedCart.userId,
-        createdAt: new Date(updatedCart.createdAt),
-        updatedAt: new Date(updatedCart.createdAt),
-        items: updatedCart.items?.map(itemDto => ({
-          id: itemDto.id,
-          cartId: updatedCart.id,
-          productId: itemDto.productId,
-          quantity: itemDto.quantity,
-          unitPrice: itemDto.unitPrice,
-          totalPrice: itemDto.totalPrice,
-          productVariant: itemDto.productVariant,
-          createdAt: new Date(updatedCart.createdAt),
-          product: mapProductDtoToProduct(itemDto.product)
-        })) || [],
-        totalItems: updatedCart.totalItems,
-        totalAmount: updatedCart.totalAmount
-      };
+      // Map and update state immediately
+      setCart(mapCartDtoToCart(updatedCartDto));
       
-      setCart(mappedCart);
     } catch (error) {
       console.error('Failed to update cart item:', error);
       // TODO: Show error toast to user
@@ -431,30 +482,11 @@ function AppContent() {
     if (!user) return;
 
     try {
-      const updatedCart = await cartService.removeFromCart(itemId);
+      const updatedCartDto = await cartService.removeFromCart(itemId);
       
-      // Map the updated cart (same as above)
-      const mappedCart: Cart = {
-        id: updatedCart.id,
-        userId: updatedCart.userId,
-        createdAt: new Date(updatedCart.createdAt),
-        updatedAt: new Date(updatedCart.createdAt),
-        items: updatedCart.items?.map(itemDto => ({
-          id: itemDto.id,
-          cartId: updatedCart.id,
-          productId: itemDto.productId,
-          quantity: itemDto.quantity,
-          unitPrice: itemDto.unitPrice,
-          totalPrice: itemDto.totalPrice,
-          productVariant: itemDto.productVariant,
-          createdAt: new Date(updatedCart.createdAt),
-          product: mapProductDtoToProduct(itemDto.product)
-        })) || [],
-        totalItems: updatedCart.totalItems,
-        totalAmount: updatedCart.totalAmount
-      };
+      // Map and update state immediately
+      setCart(mapCartDtoToCart(updatedCartDto));
       
-      setCart(mappedCart);
     } catch (error) {
       console.error('Failed to remove item from cart:', error);
       // TODO: Show error toast to user
@@ -511,16 +543,21 @@ function AppContent() {
   };
 
   const handleCategoryClick = (categoryId: number) => {
-    console.log('Navigate to category:', categoryId);
+    navigate(`/products?category=${categoryId}`);
   };
 
   const handleQuickView = (productId: number) => {
-    console.log('Quick view product:', productId);
+    navigate(`/products/${productId}`);
   };
 
   const handleCheckout = () => {
-    console.log('Navigate to checkout');
     setShowCartDrawer(false);
+    if (!user) {
+      setAuthModalTab('login');
+      setShowAuthModal(true);
+      return;
+    }
+    navigate('/checkout');
   };
 
   const handleSearch = (query: string) => {
@@ -592,6 +629,8 @@ function AppContent() {
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/products/:id" element={<ProductDetailPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
             <Route 
               path="/profile" 
               element={
@@ -611,6 +650,10 @@ function AppContent() {
                   user={user || undefined}
                 />
               } 
+            />
+            <Route 
+              path="/vendor/dashboard" 
+              element={<VendorDashboardPage />} 
             />
             <Route 
               path="/register" 
@@ -650,9 +693,11 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <AuthProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </AuthProvider>
   );
 }
 

@@ -25,36 +25,50 @@ namespace Kasuwa.Server.Services
                         .ThenInclude(p => p.Images)
                     .Include(ci => ci.Product)
                         .ThenInclude(p => p.Category)
+                    .Include(ci => ci.Product)
+                        .ThenInclude(p => p.Vendor)
                     .Include(ci => ci.ProductVariant)
                     .Where(ci => ci.UserId == userId)
                     .OrderByDescending(ci => ci.UpdatedDate)
                     .ToListAsync();
 
-                var cart = new CartDto
-                {
-                    Id = 0, // Since we're using direct cart items without a cart entity
-                    UserId = userId,
-                    CreatedDate = cartItems.Any() ? cartItems.Min(ci => ci.CreatedDate) : DateTime.UtcNow,
-                    UpdatedDate = cartItems.Any() ? cartItems.Max(ci => ci.UpdatedDate) : DateTime.UtcNow,
-                    CartItems = cartItems.Select(ci => new CartItemDto
+                var cartItemDtos = cartItems.Select(ci => {
+                    var unitPrice = ci.Product.Price + (ci.ProductVariant?.PriceAdjustment ?? 0);
+                    var totalPrice = unitPrice * ci.Quantity;
+
+                    return new CartItemDto
                     {
                         Id = ci.Id,
                         ProductId = ci.ProductId,
+                        Quantity = ci.Quantity,
                         ProductName = ci.Product.Name,
                         ProductSKU = ci.Product.SKU,
                         ProductPrice = ci.Product.Price,
                         ProductImageUrl = ci.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl 
                                        ?? ci.Product.Images.FirstOrDefault()?.ImageUrl,
-                        Quantity = ci.Quantity,
                         ProductVariantId = ci.ProductVariantId,
                         ProductVariantName = ci.ProductVariant?.Name,
                         ProductVariantValue = ci.ProductVariant?.Value,
                         VariantPriceAdjustment = ci.ProductVariant?.PriceAdjustment ?? 0,
-                        IsInStock = ci.Product.StockQuantity > 0 || ci.Product.ContinueSellingWhenOutOfStock,
+                        IsInStock = (ci.ProductVariant?.StockQuantity ?? ci.Product.StockQuantity) > 0 
+                                   || ci.Product.ContinueSellingWhenOutOfStock,
                         AvailableStock = ci.ProductVariant?.StockQuantity ?? ci.Product.StockQuantity,
-                        CreatedDate = ci.CreatedDate,
-                        UpdatedDate = ci.UpdatedDate
-                    }).ToList()
+                        CreatedAt = ci.CreatedDate,
+                        UpdatedAt = ci.UpdatedDate,
+                        Product = MapProductToDto(ci.Product)
+                    };
+                }).ToList();
+
+                var totalItems = cartItems.Sum(ci => ci.Quantity);
+                var totalAmount = cartItemDtos.Sum(ci => ci.TotalPrice);
+
+                var cart = new CartDto
+                {
+                    Id = 0, // Since we're using direct cart items without a cart entity
+                    UserId = userId,
+                    CreatedAt = cartItems.Any() ? cartItems.Min(ci => ci.CreatedDate) : DateTime.UtcNow,
+                    UpdatedAt = cartItems.Any() ? cartItems.Max(ci => ci.UpdatedDate) : DateTime.UtcNow,
+                    Items = cartItemDtos
                 };
 
                 return cart;
@@ -74,6 +88,8 @@ namespace Kasuwa.Server.Services
                 var product = await _context.Products
                     .Include(p => p.Images)
                     .Include(p => p.Variants)
+                    .Include(p => p.Category)
+                    .Include(p => p.Vendor)
                     .FirstOrDefaultAsync(p => p.Id == addToCartDto.ProductId && p.IsActive);
 
                 if (product == null)
@@ -133,25 +149,26 @@ namespace Kasuwa.Server.Services
                 _logger.LogInformation("Added product {ProductId} to cart for user {UserId} with quantity {Quantity}", 
                     addToCartDto.ProductId, userId, addToCartDto.Quantity);
 
-                // Return updated cart item
+                // Return updated cart item with proper mapping
                 return new CartItemDto
                 {
                     Id = existingItem.Id,
                     ProductId = existingItem.ProductId,
+                    Quantity = existingItem.Quantity,
                     ProductName = product.Name,
                     ProductSKU = product.SKU,
                     ProductPrice = product.Price,
                     ProductImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl 
                                    ?? product.Images.FirstOrDefault()?.ImageUrl,
-                    Quantity = existingItem.Quantity,
                     ProductVariantId = existingItem.ProductVariantId,
                     ProductVariantName = variant?.Name,
                     ProductVariantValue = variant?.Value,
                     VariantPriceAdjustment = variant?.PriceAdjustment ?? 0,
                     IsInStock = availableStock > 0 || product.ContinueSellingWhenOutOfStock,
                     AvailableStock = availableStock,
-                    CreatedDate = existingItem.CreatedDate,
-                    UpdatedDate = existingItem.UpdatedDate
+                    CreatedAt = existingItem.CreatedDate,
+                    UpdatedAt = existingItem.UpdatedDate,
+                    Product = MapProductToDto(product)
                 };
             }
             catch (Exception ex)
@@ -168,6 +185,10 @@ namespace Kasuwa.Server.Services
                 var cartItem = await _context.CartItems
                     .Include(ci => ci.Product)
                         .ThenInclude(p => p.Images)
+                    .Include(ci => ci.Product)
+                        .ThenInclude(p => p.Category)
+                    .Include(ci => ci.Product)
+                        .ThenInclude(p => p.Vendor)
                     .Include(ci => ci.ProductVariant)
                     .FirstOrDefaultAsync(ci => ci.Id == itemId && ci.UserId == userId);
 
@@ -210,20 +231,21 @@ namespace Kasuwa.Server.Services
                 {
                     Id = cartItem.Id,
                     ProductId = cartItem.ProductId,
+                    Quantity = cartItem.Quantity,
                     ProductName = cartItem.Product.Name,
                     ProductSKU = cartItem.Product.SKU,
                     ProductPrice = cartItem.Product.Price,
                     ProductImageUrl = cartItem.Product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl 
                                    ?? cartItem.Product.Images.FirstOrDefault()?.ImageUrl,
-                    Quantity = cartItem.Quantity,
                     ProductVariantId = cartItem.ProductVariantId,
                     ProductVariantName = cartItem.ProductVariant?.Name,
                     ProductVariantValue = cartItem.ProductVariant?.Value,
                     VariantPriceAdjustment = cartItem.ProductVariant?.PriceAdjustment ?? 0,
                     IsInStock = availableStock > 0 || cartItem.Product.ContinueSellingWhenOutOfStock,
                     AvailableStock = availableStock,
-                    CreatedDate = cartItem.CreatedDate,
-                    UpdatedDate = cartItem.UpdatedDate
+                    CreatedAt = cartItem.CreatedDate,
+                    UpdatedAt = cartItem.UpdatedDate,
+                    Product = MapProductToDto(cartItem.Product)
                 };
             }
             catch (Exception ex)
@@ -507,6 +529,54 @@ namespace Kasuwa.Server.Services
             var perKgRate = 1.00m;
 
             return baseShipping + (totalWeight * perKgRate);
+        }
+
+        private ProductDto MapProductToDto(Product product)
+        {
+            return new ProductDto
+            {
+                Id = product.Id,
+                VendorId = product.VendorId,
+                VendorName = $"{product.Vendor?.FirstName} {product.Vendor?.LastName}".Trim(),
+                Name = product.Name,
+                Description = product.Description,
+                Price = product.Price,
+                StockQuantity = product.StockQuantity,
+                SKU = product.SKU,
+                IsActive = product.IsActive,
+                CreatedDate = product.CreatedDate,
+                UpdatedDate = product.UpdatedDate,
+                CategoryId = product.CategoryId,
+                CategoryName = product.Category?.Name ?? "",
+                ComparePrice = product.ComparePrice,
+                Weight = product.Weight,
+                WeightUnit = product.WeightUnit,
+                RequiresShipping = product.RequiresShipping,
+                TrackQuantity = product.TrackQuantity,
+                ContinueSellingWhenOutOfStock = product.ContinueSellingWhenOutOfStock,
+                MetaTitle = product.MetaTitle,
+                MetaDescription = product.MetaDescription,
+                Images = product.Images?.Select(i => new ProductImageDto
+                {
+                    Id = i.Id,
+                    ImageUrl = i.ImageUrl,
+                    AltText = i.AltText,
+                    SortOrder = i.SortOrder,
+                    IsPrimary = i.IsPrimary
+                }).ToList() ?? new List<ProductImageDto>(),
+                Variants = product.Variants?.Select(v => new ProductVariantDto
+                {
+                    Id = v.Id,
+                    Name = v.Name,
+                    Value = v.Value,
+                    PriceAdjustment = v.PriceAdjustment,
+                    StockQuantity = v.StockQuantity,
+                    SKU = v.SKU,
+                    IsActive = v.IsActive
+                }).ToList() ?? new List<ProductVariantDto>(),
+                AverageRating = product.Reviews?.Any() == true ? product.Reviews.Average(r => r.Rating) : 0,
+                ReviewCount = product.Reviews?.Count() ?? 0
+            };
         }
     }
 }
