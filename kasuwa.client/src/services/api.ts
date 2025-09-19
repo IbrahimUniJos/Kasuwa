@@ -141,9 +141,39 @@ export class ApiClient {
   }
 
   // Upload file method for handling images
-  async uploadFile<T>(endpoint: string, file: File, additionalData?: Record<string, any>): Promise<T> {
+  async uploadFile<T>(endpoint: string, file: File, fieldName: string = 'file', additionalData?: Record<string, any>): Promise<T> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append(fieldName, file);
+
+    if (additionalData) {
+      Object.entries(additionalData).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
+    }
+
+    const headers: HeadersInit = {};
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+    // Don't set Content-Type for FormData, let the browser set it with boundary
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    return this.handleResponse<T>(response);
+  }
+
+  // Upload multiple files method for handling multiple images
+  async uploadFiles<T>(endpoint: string, files: File[], fieldName: string = 'images', additionalData?: Record<string, any>): Promise<T> {
+    const formData = new FormData();
+    
+    // Append all files with the same field name for the List<IFormFile> parameter
+    files.forEach(file => {
+      formData.append(fieldName, file);
+    });
 
     if (additionalData) {
       Object.entries(additionalData).forEach(([key, value]) => {

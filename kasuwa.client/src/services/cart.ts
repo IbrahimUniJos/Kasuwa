@@ -131,9 +131,10 @@ export class WishlistService {
    */
   async isInWishlist(productId: number): Promise<boolean> {
     try {
-      const wishlist = await this.getWishlist();
-      return wishlist.items.some(item => item.productId === productId);
+      const response = await apiClient.get<boolean>(`/wishlist/contains/${productId}`);
+      return response;
     } catch (error) {
+      console.error('Error checking wishlist status:', error);
       return false;
     }
   }
@@ -149,9 +150,29 @@ export class WishlistService {
    * Move item from wishlist to cart
    */
   async moveToCart(wishlistItemId: number, quantity: number = 1): Promise<{ cart: CartDto; wishlist: WishlistDto }> {
-    const response = await apiClient.post<{ cart: CartDto; wishlist: WishlistDto }>(
+    const cart = await apiClient.post<CartDto>(
       `/wishlist/items/${wishlistItemId}/move-to-cart`,
       { quantity }
+    );
+    const wishlist = await this.getWishlist();
+    return { cart, wishlist };
+  }
+
+  /**
+   * Move all items from wishlist to cart
+   */
+  async moveAllToCart(): Promise<{ cart: CartDto; wishlist: WishlistDto }> {
+    const cart = await apiClient.post<CartDto>('/wishlist/move-all-to-cart');
+    const wishlist = await this.getWishlist();
+    return { cart, wishlist };
+  }
+
+  /**
+   * Toggle product in wishlist
+   */
+  async toggleWishlist(productId: number): Promise<{ isInWishlist: boolean; message: string }> {
+    const response = await apiClient.post<{ isInWishlist: boolean; message: string }>(
+      `/wishlist/toggle/${productId}`
     );
     return response;
   }
@@ -161,10 +182,24 @@ export class WishlistService {
    */
   async getWishlistItemCount(): Promise<number> {
     try {
-      const wishlist = await this.getWishlist();
-      return wishlist.items.length;
+      const response = await apiClient.get<number>('/wishlist/count');
+      return response;
     } catch (error) {
+      console.error('Error getting wishlist count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Get wishlist recommendations
+   */
+  async getRecommendations(limit: number = 10): Promise<WishlistItemDto[]> {
+    try {
+      const response = await apiClient.get<WishlistItemDto[]>(`/wishlist/recommendations?limit=${limit}`);
+      return response;
+    } catch (error) {
+      console.error('Error getting wishlist recommendations:', error);
+      return [];
     }
   }
 }

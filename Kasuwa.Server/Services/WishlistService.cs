@@ -205,7 +205,7 @@ namespace Kasuwa.Server.Services
             }
         }
 
-        public async Task<CartItemDto> MoveToCartAsync(string userId, MoveToCartDto moveToCartDto)
+        public async Task<CartDto> MoveToCartAsync(string userId, MoveToCartDto moveToCartDto)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -227,7 +227,7 @@ namespace Kasuwa.Server.Services
                     ProductVariantId = moveToCartDto.ProductVariantId
                 };
 
-                var cartItem = await _cartService.AddToCartAsync(userId, addToCartDto);
+                var cart = await _cartService.AddToCartAsync(userId, addToCartDto);
 
                 // Remove from wishlist
                 _context.WishlistItems.Remove(wishlistItem);
@@ -238,7 +238,7 @@ namespace Kasuwa.Server.Services
                 _logger.LogInformation("Moved product {ProductId} from wishlist to cart for user {UserId}", 
                     wishlistItem.ProductId, userId);
 
-                return cartItem;
+                return cart;
             }
             catch (Exception ex)
             {
@@ -249,7 +249,7 @@ namespace Kasuwa.Server.Services
             }
         }
 
-        public async Task<List<CartItemDto>> MoveAllToCartAsync(string userId)
+        public async Task<CartDto> MoveAllToCartAsync(string userId)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -260,7 +260,13 @@ namespace Kasuwa.Server.Services
                     .Where(wi => wi.UserId == userId)
                     .ToListAsync();
 
-                var cartItems = new List<CartItemDto>();
+                if (!wishlistItems.Any())
+                {
+                    // Return empty cart if no wishlist items
+                    return await _cartService.GetCartAsync(userId);
+                }
+
+                CartDto? finalCart = null;
 
                 foreach (var wishlistItem in wishlistItems)
                 {
@@ -272,8 +278,7 @@ namespace Kasuwa.Server.Services
                             Quantity = 1 // Default quantity
                         };
 
-                        var cartItem = await _cartService.AddToCartAsync(userId, addToCartDto);
-                        cartItems.Add(cartItem);
+                        finalCart = await _cartService.AddToCartAsync(userId, addToCartDto);
                     }
                     catch (Exception ex)
                     {
@@ -290,9 +295,10 @@ namespace Kasuwa.Server.Services
                 await transaction.CommitAsync();
 
                 _logger.LogInformation("Moved {Count} items from wishlist to cart for user {UserId}", 
-                    cartItems.Count, userId);
+                    wishlistItems.Count, userId);
 
-                return cartItems;
+                // Return the final cart state or get current cart if finalCart is null
+                return finalCart ?? await _cartService.GetCartAsync(userId);
             }
             catch (Exception ex)
             {

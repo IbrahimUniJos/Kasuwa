@@ -7,6 +7,7 @@ export * from './orders';
 export * from './user';
 export * from './reviews';
 export * from './vendor';
+export * from './admin';
 
 // Re-export service instances for convenience
 export { authService } from './auth';
@@ -16,6 +17,7 @@ export { orderService, paymentService } from './orders';
 export { reviewService } from './reviews';
 export { userService, addressService } from './user';
 export { vendorService } from './vendor';
+export { adminService } from './admin';
 
 // Setup function to initialize all services
 export function setupServices(): void {

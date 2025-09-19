@@ -5,7 +5,7 @@ namespace Kasuwa.Server.Services
     public interface ICartService
     {
         Task<CartDto> GetCartAsync(string userId);
-        Task<CartItemDto> AddToCartAsync(string userId, AddToCartDto addToCartDto);
+        Task<CartDto> AddToCartAsync(string userId, AddToCartDto addToCartDto);
         Task<CartItemDto?> UpdateCartItemAsync(string userId, int itemId, UpdateCartItemDto updateCartItemDto);
         Task<bool> RemoveFromCartAsync(string userId, int itemId);
         Task<bool> RemoveMultipleItemsAsync(string userId, List<int> itemIds);

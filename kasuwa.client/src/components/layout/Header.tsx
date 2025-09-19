@@ -8,10 +8,12 @@ import {
   XMarkIcon,
   ChevronDownIcon,
   ArrowRightOnRectangleIcon,
-  GlobeAltIcon
+  GlobeAltIcon,
+  CogIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid';
 import { CategoryService } from '../../services/products';
+import { useAuth } from '../../contexts/AuthContext';
 import type { CategoryDto } from '../../types/api';
 
 interface HeaderProps {
@@ -38,6 +40,7 @@ export default function Header({
   onLogout
 }: HeaderProps) {
   const navigate = useNavigate();
+  const { isAdmin, isVendor } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
@@ -121,6 +124,26 @@ export default function Header({
                       <Link to="/wishlist" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setIsUserMenuOpen(false)}>
                         Wishlist
                       </Link>
+                      
+                      {/* Admin/Vendor Links */}
+                      {isAdmin && (
+                        <div className="border-t border-gray-100 my-1">
+                          <Link to="/admin/dashboard" className="flex items-center px-4 py-2 text-sm text-purple-600 hover:bg-purple-50" onClick={() => setIsUserMenuOpen(false)}>
+                            <CogIcon className="h-4 w-4 mr-2" />
+                            Admin Dashboard
+                          </Link>
+                        </div>
+                      )}
+                      
+                      {isVendor && (
+                        <div className="border-t border-gray-100 my-1">
+                          <Link to="/vendor/dashboard" className="flex items-center px-4 py-2 text-sm text-green-600 hover:bg-green-50" onClick={() => setIsUserMenuOpen(false)}>
+                            <CogIcon className="h-4 w-4 mr-2" />
+                            Vendor Dashboard
+                          </Link>
+                        </div>
+                      )}
+                      
                       <div className="border-t border-gray-100 my-1"></div>
                       <button onClick={handleLogout} className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                         <ArrowRightOnRectangleIcon className="h-4 w-4 mr-2" />
@@ -163,7 +186,7 @@ export default function Header({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Dji Tello Edu Drone"
+                placeholder="Search for products..."
                 className="w-full pl-4 pr-20 py-3 border-2 border-orange-400 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-colors"
               />
               <button
@@ -447,6 +470,30 @@ export default function Header({
                   >
                     Wishlist
                   </Link>
+                  
+                  {/* Admin/Vendor Links for Mobile */}
+                  {isAdmin && (
+                    <Link
+                      to="/admin/dashboard"
+                      className="flex items-center px-3 py-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-lg"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <CogIcon className="h-4 w-4 mr-2" />
+                      Admin Dashboard
+                    </Link>
+                  )}
+                  
+                  {isVendor && (
+                    <Link
+                      to="/vendor/dashboard"
+                      className="flex items-center px-3 py-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <CogIcon className="h-4 w-4 mr-2" />
+                      Vendor Dashboard
+                    </Link>
+                  )}
+                  
                   <button
                     onClick={() => {
                       setIsMenuOpen(false);

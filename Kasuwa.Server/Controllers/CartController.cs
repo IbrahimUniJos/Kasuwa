@@ -59,10 +59,7 @@ namespace Kasuwa.Server.Controllers
                     return Unauthorized();
                 }
 
-                await _cartService.AddToCartAsync(userId, addToCartDto);
-
-                // Return the full updated cart
-                var cart = await _cartService.GetCartAsync(userId);
+                var cart = await _cartService.AddToCartAsync(userId, addToCartDto);
 
                 _logger.LogInformation("Added product {ProductId} to cart for user {UserId}", addToCartDto.ProductId, userId);
 

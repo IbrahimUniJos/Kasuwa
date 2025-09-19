@@ -247,6 +247,7 @@ export interface CartDto {
   totalItems: number;
   totalAmount: number;
   createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string  
   items: CartItemDto[];
 }
 
@@ -257,18 +258,30 @@ export interface CartItemDto {
   unitPrice: number;
   totalPrice: number;
   productVariant?: string;
+  productVariantId?: number;
+  productName: string;
+  productSKU: string;
+  productPrice: number;
+  productImageUrl?: string;
+  variantPriceAdjustment: number;
+  isInStock: boolean;
+  availableStock: number;
+  createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
   product: ProductDto;
 }
 
 export interface AddToCartDto {
   productId: number;
   quantity: number;
+  productVariantId?: number;
   productVariant?: string;
 }
 
 export interface UpdateCartItemDto {
   cartItemId: number;
   quantity: number;
+  productVariantId?: number;
 }
 
 // Wishlist DTOs
@@ -276,14 +289,29 @@ export interface WishlistDto {
   id: number;
   userId: string;
   createdAt: string; // ISO date string
+  updatedAt: string; // ISO date string
   items: WishlistItemDto[];
+  totalItems: number;
 }
 
 export interface WishlistItemDto {
   id: number;
   productId: number;
+  productName: string;
+  productSKU: string;
+  productPrice: number;
+  comparePrice?: number;
+  productImageUrl?: string;
+  isInStock: boolean;
+  isActive: boolean;
+  categoryName: string;
+  vendorName: string;
+  averageRating: number;
+  reviewCount: number;
   createdAt: string; // ISO date string
-  product: ProductDto;
+  hasDiscount: boolean;
+  discountPercentage?: number;
+  product?: ProductDto;
 }
 
 export interface AddToWishlistDto {

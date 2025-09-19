@@ -2,7 +2,6 @@ using Kasuwa.Server.Data;
 using Kasuwa.Server.Data.Seeders;
 using Kasuwa.Server.Models;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
 using Kasuwa.Server.Services;
 
 namespace Kasuwa.Server.Extensions
@@ -15,12 +14,14 @@ namespace Kasuwa.Server.Extensions
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<DataSeeder>>();
+            var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+            var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
 
             try
             {
                 logger.LogInformation("Starting data seeding process...");
                 
-                var seeder = new DataSeeder(context, userManager);
+                var seeder = new DataSeeder(context, userManager, env, config);
                 await seeder.SeedAsync();
                 
                 logger.LogInformation("Data seeding completed successfully.");

@@ -2,6 +2,8 @@ using Bogus;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Kasuwa.Server.Models;
+using Microsoft.AspNetCore.Hosting;
+using System.Net;
 
 namespace Kasuwa.Server.Data.Seeders
 {
@@ -9,11 +11,19 @@ namespace Kasuwa.Server.Data.Seeders
     {
         private readonly ApplicationDbContext _context;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IWebHostEnvironment _env;
+        private readonly bool _downloadImagesEnabled;
+    private static readonly HttpClient HttpClient = new HttpClient();
 
-        public DataSeeder(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
+        public DataSeeder(ApplicationDbContext context,
+                          UserManager<ApplicationUser> userManager,
+                          IWebHostEnvironment env,
+                          IConfiguration config)
         {
             _context = context;
             _userManager = userManager;
+            _env = env;
+            _downloadImagesEnabled = config.GetValue("Seed:DownloadImages", false);
         }
 
         public async Task SeedAsync()
@@ -38,10 +48,20 @@ namespace Kasuwa.Server.Data.Seeders
             // Seed customers  
             var customers = await SeedCustomers();
             
-            // Seed products
+            // Seed products (in-memory first)
             var products = await SeedProducts(categories, vendors);
-            
-            // Seed orders
+
+            // Optionally download images & replace URLs with local paths
+            if (_downloadImagesEnabled)
+            {
+                await DownloadAllProductPrimaryImagesAsync(products);
+            }
+
+            // Persist products (and images) before creating orders that depend on product IDs
+            await _context.Products.AddRangeAsync(products);
+            await _context.SaveChangesAsync();
+
+            // Seed orders (after products saved -> IDs assigned)
             await SeedOrders(customers, products, vendors);
 
             await _context.SaveChangesAsync();
@@ -170,7 +190,7 @@ namespace Kasuwa.Server.Data.Seeders
             };
 
             var vendorFaker = new Faker<ApplicationUser>()
-                .RuleFor(u => u.Id, f => Guid.NewGuid().ToString())
+                .RuleFor(u => u.Id, _ => Guid.NewGuid().ToString())
                 .RuleFor(u => u.UserName, f => f.Internet.UserName())
                 .RuleFor(u => u.Email, f => f.Internet.Email())
                 .RuleFor(u => u.EmailConfirmed, true)
@@ -229,7 +249,7 @@ namespace Kasuwa.Server.Data.Seeders
             };
 
             var customerFaker = new Faker<ApplicationUser>()
-                .RuleFor(u => u.Id, f => Guid.NewGuid().ToString())
+                .RuleFor(u => u.Id, _ => Guid.NewGuid().ToString())
                 .RuleFor(u => u.UserName, f => f.Internet.UserName())
                 .RuleFor(u => u.Email, f => f.Internet.Email())
                 .RuleFor(u => u.EmailConfirmed, true)
@@ -263,7 +283,7 @@ namespace Kasuwa.Server.Data.Seeders
             return customers;
         }
 
-        private async Task<List<Product>> SeedProducts(List<ProductCategory> categories, List<ApplicationUser> vendors)
+        private Task<List<Product>> SeedProducts(List<ProductCategory> categories, List<ApplicationUser> vendors)
         {
             var products = new List<Product>();
 
@@ -303,13 +323,10 @@ namespace Kasuwa.Server.Data.Seeders
             var spiceProducts = GenerateSpiceProducts(categories.First(c => c.Name == "Spices & Seasonings"), vendors);
             products.AddRange(spiceProducts);
 
-            await _context.Products.AddRangeAsync(products);
-            await _context.SaveChangesAsync();
-
-            return products;
+            return Task.FromResult(products);
         }
 
-        private async Task SeedOrders(List<ApplicationUser> customers, List<Product> products, List<ApplicationUser> vendors)
+        private async Task SeedOrders(List<ApplicationUser> customers, List<Product> products, List<ApplicationUser> _)
         {
             var orderFaker = new Faker<Order>()
                 .RuleFor(o => o.OrderNumber, f => $"ORD{f.Random.Number(100000, 999999)}")
@@ -406,24 +423,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Shea Butter (Man Kadanya)", "Pure unrefined shea butter", 15000, 22000),
                 ("Dried Meat (Kilishi)", "Spiced dried beef strips", 25000, 35000)
             };
-
-            return foodItems.Select(item => new Product
+            return foodItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(50, 500),
-                SKU = $"FOOD_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 50),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"FOOD_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(50, 500),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 50),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("grains food ingredients", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -446,24 +474,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Horse (Doki)", "Riding horse, well trained", 350000, 500000),
                 ("Camel (Rakumi)", "Desert camel for transport", 680000, 950000)
             };
-
-            return livestockItems.Select(item => new Product
+            return livestockItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(1, 20),
-                SKU = $"LIVE_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(50, 500),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = false,
-                TrackQuantity = true
+                var sku = $"LIVE_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(1, 20),
+                    SKU = sku,
+                    Weight = new Random().Next(50, 500),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = false,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("livestock animal market nigeria", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -487,24 +526,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Tie-Dye Fabric", "Traditional tie-dye patterns", 2800, 4800),
                 ("Batik Fabric", "Indonesian batik designs", 5500, 8800)
             };
-
-            return textileItems.Select(item => new Product
+            return textileItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(20, 200),
-                SKU = $"TEXT_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 5),
-                WeightUnit = "meters",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"TEXT_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(20, 200),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 5),
+                    WeightUnit = "meters",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("african fabric ankara textile", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -531,24 +581,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Agbari", "Traditional vest", 12000, 18000),
                 ("Embroidered Robe", "Hand-embroidered kaftan", 85000, 125000)
             };
-
-            return traditionalWearItems.Select(item => new Product
+            return traditionalWearItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(10, 100),
-                SKU = $"WEAR_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 3),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"WEAR_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(10, 100),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 3),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("traditional african clothing nigeria", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -572,24 +633,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Leather Mat", "Traditional sitting mat", 15000, 25000),
                 ("Leather Bookmark", "Decorative bookmark", 1500, 2800)
             };
-
-            return leatherItems.Select(item => new Product
+            return leatherItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(5, 50),
-                SKU = $"LEAT_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 5),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"LEAT_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(5, 50),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 5),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("handmade leather crafts nigeria", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -613,24 +685,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Embroidered Pillow", "Hand-embroidered cushion", 18000, 28000),
                 ("Brass Ornament", "Traditional brass decoration", 25000, 38000)
             };
-
-            return handicraftItems.Select(item => new Product
+            return handicraftItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(5, 30),
-                SKU = $"HAND_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 10),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"HAND_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(5, 30),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 10),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("african traditional handicrafts", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -654,24 +737,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Memory Card", "32GB micro SD card", 8500, 13000),
                 ("Wall Socket", "USB charging wall socket", 5500, 8800)
             };
-
-            return electronicsItems.Select(item => new Product
+            return electronicsItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(10, 100),
-                SKU = $"ELEC_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 5),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"ELEC_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(10, 100),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 5),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("consumer electronics gadgets", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -695,24 +789,35 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Soap", "Laundry bar soap", 1500, 2800),
                 ("Detergent", "Washing powder", 3500, 5800)
             };
-
-            return householdItems.Select(item => new Product
+            return householdItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(20, 150),
-                SKU = $"HOME_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 15),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"HOME_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(20, 150),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 15),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("household items home essentials", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
         }
 
@@ -736,25 +841,113 @@ namespace Kasuwa.Server.Data.Seeders
                 ("Paprika", "Sweet paprika powder", 8500, 12800),
                 ("Garlic Powder", "Ground garlic powder", 5500, 8200)
             };
-
-            return spiceItems.Select(item => new Product
+            return spiceItems.Select(item =>
             {
-                VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
-                CategoryId = category.Id,
-                Name = item.Item1,
-                Description = item.Item2,
-                Price = item.Item3,
-                ComparePrice = item.Item4,
-                StockQuantity = new Random().Next(30, 200),
-                SKU = $"SPIC_{new Random().Next(1000, 9999)}",
-                Weight = new Random().Next(1, 2),
-                WeightUnit = "kg",
-                IsActive = true,
-                CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
-                UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
-                RequiresShipping = true,
-                TrackQuantity = true
+                var sku = $"SPIC_{new Random().Next(1000, 9999)}";
+                var product = new Product
+                {
+                    VendorId = vendors[new Random().Next(0, vendors.Count)].Id,
+                    CategoryId = category.Id,
+                    Name = item.Item1,
+                    Description = item.Item2,
+                    Price = item.Item3,
+                    ComparePrice = item.Item4,
+                    StockQuantity = new Random().Next(30, 200),
+                    SKU = sku,
+                    Weight = new Random().Next(1, 2),
+                    WeightUnit = "kg",
+                    IsActive = true,
+                    CreatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 60)),
+                    UpdatedDate = DateTime.UtcNow.AddDays(-new Random().Next(1, 30)),
+                    RequiresShipping = true,
+                    TrackQuantity = true
+                };
+                product.Images.Add(new ProductImage
+                {
+                    ImageUrl = GenerateProductImageUrl("spices seasoning assortment", sku),
+                    AltText = item.Item1,
+                    IsPrimary = true,
+                    SortOrder = 0
+                });
+                return product;
             }).ToList();
+        }
+
+        // Central helper to build a deterministic Unsplash query based image URL (hotlinking Unsplash Source API)
+        // Note: For production you should download & cache images and respect provider TOS / attribution.
+        private string GenerateProductImageUrl(string keywordQuery, string sku)
+        {
+            var encoded = WebUtility.UrlEncode(keywordQuery);
+            return $"https://source.unsplash.com/640x640/?{encoded}&sig={sku.GetHashCode()}";
+        }
+
+        // --- Image Download Helpers ---
+        private async Task DownloadAllProductPrimaryImagesAsync(IEnumerable<Product> products)
+        {
+            var webRoot = string.IsNullOrWhiteSpace(_env.WebRootPath) ? Path.Combine(AppContext.BaseDirectory, "wwwroot") : _env.WebRootPath;
+            var targetDir = Path.Combine(webRoot, "images", "products");
+            Directory.CreateDirectory(targetDir);
+
+            foreach (var product in products)
+            {
+                var primary = product.Images.FirstOrDefault(i => i.IsPrimary) ?? product.Images.FirstOrDefault();
+                if (primary == null) continue;
+                if (!primary.ImageUrl.StartsWith("https://source.unsplash.com", StringComparison.OrdinalIgnoreCase)) continue; // only replace our generated URLs
+
+                try
+                {
+                    var localRel = await DownloadImageForProductAsync(primary.ImageUrl, product.SKU, targetDir);
+                    if (!string.IsNullOrEmpty(localRel))
+                    {
+                        primary.ImageUrl = localRel; // e.g. /images/products/FOOD_1234.jpg
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Swallow to avoid failing whole seed; could log if logger injected
+                    // TODO: optionally add logging
+                    _ = ex; // suppress warning
+                }
+            }
+        }
+
+        private async Task<string?> DownloadImageForProductAsync(string remoteUrl, string sku, string targetDir)
+        {
+            // Determine extension (default jpeg)
+            var safeSku = string.Join("_", sku.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            var fileName = safeSku + ".jpg";
+            var filePath = Path.Combine(targetDir, fileName);
+            var relativePath = $"/images/products/{fileName}";
+
+            if (File.Exists(filePath))
+            {
+                return relativePath; // already downloaded
+            }
+
+            // Basic retry logic
+            const int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    using var response = await HttpClient.GetAsync(remoteUrl);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        await Task.Delay(250 * attempt);
+                        continue;
+                    }
+                    await using var stream = await response.Content.ReadAsStreamAsync();
+                    await using var fs = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
+                    await stream.CopyToAsync(fs);
+                    return relativePath;
+                }
+                catch
+                {
+                    await Task.Delay(250 * attempt);
+                    // try again unless last attempt
+                }
+            }
+            return null; // failed
         }
 
         // Helper methods

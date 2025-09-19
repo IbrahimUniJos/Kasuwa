@@ -80,7 +80,7 @@ namespace Kasuwa.Server.Services
             }
         }
 
-        public async Task<CartItemDto> AddToCartAsync(string userId, AddToCartDto addToCartDto)
+        public async Task<CartDto> AddToCartAsync(string userId, AddToCartDto addToCartDto)
         {
             try
             {
@@ -141,7 +141,6 @@ namespace Kasuwa.Server.Services
                     };
 
                     _context.CartItems.Add(cartItem);
-                    existingItem = cartItem;
                 }
 
                 await _context.SaveChangesAsync();
@@ -149,27 +148,8 @@ namespace Kasuwa.Server.Services
                 _logger.LogInformation("Added product {ProductId} to cart for user {UserId} with quantity {Quantity}", 
                     addToCartDto.ProductId, userId, addToCartDto.Quantity);
 
-                // Return updated cart item with proper mapping
-                return new CartItemDto
-                {
-                    Id = existingItem.Id,
-                    ProductId = existingItem.ProductId,
-                    Quantity = existingItem.Quantity,
-                    ProductName = product.Name,
-                    ProductSKU = product.SKU,
-                    ProductPrice = product.Price,
-                    ProductImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl 
-                                   ?? product.Images.FirstOrDefault()?.ImageUrl,
-                    ProductVariantId = existingItem.ProductVariantId,
-                    ProductVariantName = variant?.Name,
-                    ProductVariantValue = variant?.Value,
-                    VariantPriceAdjustment = variant?.PriceAdjustment ?? 0,
-                    IsInStock = availableStock > 0 || product.ContinueSellingWhenOutOfStock,
-                    AvailableStock = availableStock,
-                    CreatedAt = existingItem.CreatedDate,
-                    UpdatedAt = existingItem.UpdatedDate,
-                    Product = MapProductToDto(product)
-                };
+                // Return the updated full cart
+                return await GetCartAsync(userId);
             }
             catch (Exception ex)
             {

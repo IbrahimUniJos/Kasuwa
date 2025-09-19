@@ -15,7 +15,7 @@ interface HomePageProps {
 
 export default function HomePage({ className = '' }: HomePageProps) {
   const navigate = useNavigate();
-  const { isAuthenticated, login, register } = useAuth();
+  const { isAuthenticated, isAdmin, isVendor, login, register } = useAuth();
   const [featuredProducts, setFeaturedProducts] = useState<ProductListDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +110,22 @@ export default function HomePage({ className = '' }: HomePageProps) {
     }
   };
 
+  const handleBecomeVendor = () => {
+    if (!isAuthenticated) {
+      setAuthOpen(true);
+      return;
+    }
+
+    if (isAdmin) {
+      navigate('/admin/dashboard');
+    } else if (isVendor) {
+      navigate('/vendor/dashboard');
+    } else {
+      // For customers, open vendor registration
+      setAuthOpen(true);
+    }
+  };
+
   return (
     <div className={`min-h-screen bg-gray-50 ${className}`}>
       {/* Hero Section */}
@@ -132,11 +148,11 @@ export default function HomePage({ className = '' }: HomePageProps) {
                 Start Shopping
               </button>
               <button
-                onClick={() => setAuthOpen(true)}
+                onClick={handleBecomeVendor}
                 className="bg-transparent border border-white/70 text-white px-8 py-3 rounded-lg font-semibold hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-white/70 focus:ring-offset-2 focus:ring-offset-kasuwa-primary-700"
                 aria-label="Become a vendor: open registration"
               >
-                Become a Vendor
+                {isAdmin ? 'Admin Dashboard' : isVendor ? 'Vendor Dashboard' : 'Become a Vendor'}
               </button>
             </div>
           </div>
@@ -290,10 +306,10 @@ export default function HomePage({ className = '' }: HomePageProps) {
               Explore Products
             </button>
             <button
-              onClick={() => setAuthOpen(true)}
+              onClick={handleBecomeVendor}
               className="bg-transparent border border-white/70 text-white px-6 py-3 rounded-lg font-medium hover:bg-white/10 transition-colors"
             >
-              Start Selling
+              {isAdmin ? 'Admin Dashboard' : isVendor ? 'Vendor Dashboard' : 'Start Selling'}
             </button>
           </div>
         </div>
@@ -308,6 +324,8 @@ export default function HomePage({ className = '' }: HomePageProps) {
         defaultTab="register"
         defaultUserType={2} // UserType.Vendor
       />
-    </div>
-  );
+      </div>
+ 
+    );
+
 }

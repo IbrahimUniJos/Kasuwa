@@ -24,6 +24,14 @@ import CheckoutPage from './pages/CheckoutPage';
 import RegistrationPage from './pages/RegistrationPage';
 import VendorDashboardPage from './pages/VendorDashboardPage';
 
+// Admin Pages
+import AdminDashboardPage from './pages/AdminDashboardPage';
+import AdminUsersPage from './pages/AdminUsersPage';
+import AdminProductsPage from './pages/AdminProductsPage';
+import AdminVendorsPage from './pages/AdminVendorsPage';
+import AdminCategoriesPage from './pages/AdminCategoriesPage';
+import AdminSettingsPage from './pages/AdminSettingsPage';
+
 // Services and Types
 import { 
   productService, 
@@ -663,6 +671,14 @@ function AppContent() {
                 />
               } 
             />
+            
+            {/* Admin Routes */}
+            <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/products" element={<AdminProductsPage />} />
+            <Route path="/admin/vendors" element={<AdminVendorsPage />} />
+            <Route path="/admin/categories" element={<AdminCategoriesPage />} />
+            <Route path="/admin/settings" element={<AdminSettingsPage />} />
           </Routes>
         </main>
 

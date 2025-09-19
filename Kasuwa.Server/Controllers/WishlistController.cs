@@ -169,7 +169,7 @@ namespace Kasuwa.Server.Controllers
         /// Move item from wishlist to cart
         /// </summary>
         [HttpPost("items/{itemId}/move-to-cart")]
-        public async Task<ActionResult<CartItemDto>> MoveToCart(int itemId, [FromBody] MoveToCartDto moveToCartDto)
+        public async Task<ActionResult<CartDto>> MoveToCart(int itemId, [FromBody] MoveToCartDto moveToCartDto)
         {
             try
             {
@@ -182,11 +182,11 @@ namespace Kasuwa.Server.Controllers
                 // Set the item ID from the route
                 moveToCartDto.WishlistItemId = itemId;
 
-                var cartItem = await _wishlistService.MoveToCartAsync(userId, moveToCartDto);
+                var cart = await _wishlistService.MoveToCartAsync(userId, moveToCartDto);
 
                 _logger.LogInformation("Moved wishlist item {ItemId} to cart for user {UserId}", itemId, userId);
 
-                return Ok(cartItem);
+                return Ok(cart);
             }
             catch (ArgumentException ex)
             {
@@ -203,7 +203,7 @@ namespace Kasuwa.Server.Controllers
         /// Move all items from wishlist to cart
         /// </summary>
         [HttpPost("move-all-to-cart")]
-        public async Task<ActionResult<List<CartItemDto>>> MoveAllToCart()
+        public async Task<ActionResult<CartDto>> MoveAllToCart()
         {
             try
             {
@@ -213,11 +213,11 @@ namespace Kasuwa.Server.Controllers
                     return Unauthorized();
                 }
 
-                var cartItems = await _wishlistService.MoveAllToCartAsync(userId);
+                var cart = await _wishlistService.MoveAllToCartAsync(userId);
 
-                _logger.LogInformation("Moved {Count} items from wishlist to cart for user {UserId}", cartItems.Count, userId);
+                _logger.LogInformation("Moved all items from wishlist to cart for user {UserId}", userId);
 
-                return Ok(cartItems);
+                return Ok(cart);
             }
             catch (Exception ex)
             {
@@ -367,5 +367,4 @@ namespace Kasuwa.Server.Controllers
     {
         public bool IsInWishlist { get; set; }
         public string Message { get; set; } = string.Empty;
-    }
-}
+    }}
